@@ -1,0 +1,20 @@
+schema: spec-driven
+
+# Project context (shown to AI when creating artifacts)
+context: |
+  すべてのOpenSpec成果物（proposal.md, spec.md, design.md, tasks.md）は日本語で作成する。
+  仕様書は人間がレビューしやすい、可読性の高い形式で記述する。
+  不明点や判断が必要な事項は推測で補完せず、[要確認]として明示する。
+
+# Per-artifact rules (additive to schema's built-in guidance)
+rules:
+  proposal:
+    - Capabilities（ユーザーストーリー相当）は、互いに独立して実装・テスト・デプロイ可能な単位に分割する
+  tasks:
+    - タスクはユーザーストーリー単位で、互いに独立して実装・テスト・デプロイできるように分割する
+
+# Per-operation guidance (advisory guidance for apply/archive work)
+operations:
+  apply:
+    guidance:
+      - テストファーストを原則とする。要件に沿ったテストをまず実装より先に作成し、実装はすべてのテストにパスすることを必須とする
