@@ -12,17 +12,21 @@ context: |
 
   Sizet 本体は別リポジトリ（`sizet`）であり、このプロジェクトから変更しない。
   Sizet の構成は Expo + Hono/Cloudflare Workers + Supabase + Claude API。
-  収益源は AdMob 広告と iOS サブスクリプション（2026-08-15 に新規販売停止済みで、
-  現在の主収益は AdMob）。費用源は Claude API・Cloudflare・Resend・Supabase。
+
+  対象とする収益源は AdMob 広告のみ。iOS サブスクリプションは 2026-08-15 に
+  新規販売を停止し、既存加入者も 2026-09 中に満了するため対象外とする
+  （将来サブスクを再開する場合は ③ のチェンジで追加する）。
+  費用源は Claude API・Cloudflare・Resend・Supabase の 4 つ。
 
   ## 全体ロードマップ
 
   以下の 6 チェンジで構成し、依存順に進める。
 
-  1. setup-openbook-foundation: 日次財務レコードの形式・保存規約・バッチ実行基盤
+  1. setup-openbook-foundation: 日次財務レコードの形式・保存規約・日次バッチと月次クローズの実行基盤
   2. collect-daily-cost: 4 プロバイダの費用を日次収集（1 に依存）
-  3. collect-daily-revenue: AdMob / App Store Connect の収益を日次収集（1 に依存、2 と並行可）
-  4. anchor-daily-hash-on-arc: ハッシュを Arc テストネットへ刻印・検証（2,3 に依存）
+  3. collect-daily-revenue: AdMob の収益を日次収集（1 に依存、2 と並行可）
+  4. anchor-daily-hash-on-arc: 月次クローズで確定した日次レコードのハッシュを
+     Arc テストネットへ刻印・検証（2,3 に依存）
   5. serve-x402-paid-api: x402 による USDC 決済つき有料 API（2,3,4 に依存）
   6. build-public-dashboard: 支払いから可視化までのフロントエンド（5 に依存）
 
@@ -44,19 +48,39 @@ context: |
   - 保存済みオブジェクトは不変。訂正はリビジョン追加で行い、過去リビジョンを残す
   - 費用・収益の各エントリは取得方式（measured / derived / estimated）と、
     提供元が後から値を改訂しうるかを必ず保持する。レコード全体の確定状態は持たない
-  - ハッシュ刻印は取得のたびではなく、翌月初の月次クローズで最終リビジョンを
-    確定させた後に 1 回だけ行う
+  - 取得できなかった対象は 0 円として扱わず、欠測として記録する
+  - 保持するレコードは日次のみ。月次収支は日次レコードの集計として都度算出し、
+    月次レコードは作らない
+  - ハッシュ刻印は取得のたびではなく、翌月の月次クローズで各日の最終リビジョンを
+    確定させた後に、その月の全日分をまとめて 1 回だけ行う。当月中の日次レコードは
+    推定値の変動でリビジョンが増えてよく、その間は未刻印として扱う
 
   ## 外部依存について確認済みの事実
 
-  - Claude API: Usage & Cost API は日次バケットで費用を取得できるが、Admin API キーが
-    必須で「individual accounts では利用不可」と公式に明記されている。②の着手前に
-    キー発行可否の確認が必要
-  - Cloudflare: Billable Usage API（`/accounts/{id}/billing/usage/paygo`）で費用を取得できる
-  - Resend / Supabase: 課金額を返す公開 API は確認できていない。プラン月額からの
-    日割り推定または使用量からの算出になる
-  - AdMob: `networkReport` で日次取得できるが値は推定で、確定するのは翌月初の
-    月次支払額のみ。日次の確定値は提供されない
+  - Claude API: Usage & Cost API は日次バケット（`1d`）のみで費用を取得できる。
+    データは通常 5 分以内に反映される。ただし Admin API キーが必須で、
+    「The Admin API is unavailable for individual accounts.」と公式に明記されている。
+    ②の着手前にキー発行可否の確認が必要
+  - Cloudflare: Billable Usage API（`/accounts/{id}/billing/usage/paygo`）で
+    課金額を取得できる。ただし返却は charge period 単位で、多くの製品では日次だが
+    保証はない。日次に分解できるかは②で実データによる確認が必要
+  - Resend / Supabase: 課金額を返す公開 API は存在しない。現状はいずれも無料枠内で
+    費用は 0 円のため、設定値として 0 円を記録する。無料枠を超過しても自動検知
+    できないため、超過に気づく手段を別途用意する必要がある
+  - AdMob: `accounts.networkReport` で `DATE` / `WEEK` / `MONTH` のディメンションと
+    任意の `dateRange` を指定でき、日次・週次・月次のいずれの粒度でも取得できる。
+    ただし取得できるのは `ESTIMATED_EARNINGS`（推定値）のみで、API v1 には
+    payments / transactions / 確定収益に相当するリソースが存在しない。確定額は
+    管理画面の Transactions にしか現れないため、自動取得はできない。
+    推定値は本プロジェクトではそのまま採用し、推定である旨を明示して公開する。
+    データは約 4 時間遅延し、出現から最初の 48 時間は頻繁に変動する。
+    レポートのタイムゾーンはアカウント既定か `America/Los_Angeles` のみで、
+    レコードの対象日（UTC 暦日）とは境界がずれる
+  - Apple（対象外）: `/v1/salesReports` は日次の推定値、`/v1/financeReports` は
+    確定 proceeds を返すが Apple 会計月（4-4-5 週）基準で暦月とずれる。
+    サブスク終了により対象外としたため、現時点では利用しない
+  - 為替: Frankfurter（`api.frankfurter.dev`、ECB 公表値、API キー不要）を使う。
+    ECB は営業日のみ公表するため、休場日は対象日以前で最新の公表日のレートを用いる
   - x402: CAIP-2 で任意の EVM チェーンを指定でき、Arc Testnet は `eip155:5042002`。
     テストネットは Circle の hosted facilitator が利用できる
 
