@@ -2,7 +2,67 @@ schema: spec-driven
 
 # Project context (shown to AI when creating artifacts)
 context: |
-  すべてのOpenSpec成果物（proposal.md, spec.md, design.md, tasks.md）は日本語で作成する。
+  ## プロジェクト概要
+
+  Sizet OpenBook は、個人開発アプリ「Sizet」（服のサイズを管理する iOS アプリ）の
+  収益と費用を、個人開発者向けに公開するシステムである。
+  日次の財務データを x402 による USDC 決済つきの有料 API として提供し、
+  データが改ざんされていないことを Arc テストネット上のコントラクトに
+  刻んだハッシュで第三者が検証できるようにする。
+
+  Sizet 本体は別リポジトリ（`sizet`）であり、このプロジェクトから変更しない。
+  Sizet の構成は Expo + Hono/Cloudflare Workers + Supabase + Claude API。
+  収益源は AdMob 広告と iOS サブスクリプション（2026-08-15 に新規販売停止済みで、
+  現在の主収益は AdMob）。費用源は Claude API・Cloudflare・Resend・Supabase。
+
+  ## 全体ロードマップ
+
+  以下の 6 チェンジで構成し、依存順に進める。
+
+  1. setup-openbook-foundation: 日次財務レコードの形式・保存規約・バッチ実行基盤
+  2. collect-daily-cost: 4 プロバイダの費用を日次収集（1 に依存）
+  3. collect-daily-revenue: AdMob / App Store Connect の収益を日次収集（1 に依存、2 と並行可）
+  4. anchor-daily-hash-on-arc: ハッシュを Arc テストネットへ刻印・検証（2,3 に依存）
+  5. serve-x402-paid-api: x402 による USDC 決済つき有料 API（2,3,4 に依存）
+  6. build-public-dashboard: 支払いから可視化までのフロントエンド（5 に依存）
+
+  ## 技術スタック
+
+  TypeScript（strict） / Hono / Cloudflare Workers（Cron Triggers） / Cloudflare R2 /
+  Vitest（@cloudflare/vitest-pool-workers） / pnpm ワークスペース。
+  リレーショナル DB は使用しない。パッケージ構成は `apps/api` と `packages/shared`
+  （正準化・10 進演算などフロントエンドと共有するロジック）。
+
+  ## チェンジ横断の確定方針
+
+  - 保存物・ハッシュ対象・API 公開物のバイト列を一致させる。日次レコードは
+    正準 JSON（RFC 8785 + 配列の並び順規則）としてそのまま R2 に保存する
+  - 集計基準通貨は JPY。為替は Frankfurter（ECB 公表値）を用い、原通貨・原金額・
+    適用レート・公表日をレコードに残して再計算可能にする
+  - レコードの対象日は UTC の暦日。取得元の集計タイムゾーンはエントリ側に記録する
+  - 金額は文字列の 10 進小数で保持し、浮動小数点数を使わない
+  - 保存済みオブジェクトは不変。訂正はリビジョン追加で行い、過去リビジョンを残す
+  - 費用・収益の各エントリは取得方式（measured / derived / estimated）と、
+    提供元が後から値を改訂しうるかを必ず保持する。レコード全体の確定状態は持たない
+  - ハッシュ刻印は取得のたびではなく、翌月初の月次クローズで最終リビジョンを
+    確定させた後に 1 回だけ行う
+
+  ## 外部依存について確認済みの事実
+
+  - Claude API: Usage & Cost API は日次バケットで費用を取得できるが、Admin API キーが
+    必須で「individual accounts では利用不可」と公式に明記されている。②の着手前に
+    キー発行可否の確認が必要
+  - Cloudflare: Billable Usage API（`/accounts/{id}/billing/usage/paygo`）で費用を取得できる
+  - Resend / Supabase: 課金額を返す公開 API は確認できていない。プラン月額からの
+    日割り推定または使用量からの算出になる
+  - AdMob: `networkReport` で日次取得できるが値は推定で、確定するのは翌月初の
+    月次支払額のみ。日次の確定値は提供されない
+  - x402: CAIP-2 で任意の EVM チェーンを指定でき、Arc Testnet は `eip155:5042002`。
+    テストネットは Circle の hosted facilitator が利用できる
+
+  ## ドキュメント方針
+
+  すべての OpenSpec 成果物（proposal.md, spec.md, design.md, tasks.md）は日本語で作成する。
   仕様書は人間がレビューしやすい、可読性の高い形式で記述する。
   不明点や判断が必要な事項は推測で補完せず、[要確認]として明示する。
 
