@@ -138,3 +138,19 @@ export function roundHalfUp(value: string, scale: number): string {
 
   return format(isNegative ? -rounded : rounded, scale);
 }
+
+/**
+ * 10 進小数を乗算する。結果の小数桁数は両者の桁数の和になる。
+ *
+ * 為替換算（原金額 × レート）に用いる。丸めは呼び出し側が roundHalfUp で行う。
+ *
+ * @param a 乗数
+ * @param b 被乗数
+ * @returns 積の 10 進小数の文字列
+ */
+export function multiplyDecimals(a: string, b: string): string {
+  const left = parse(a);
+  const right = parse(b);
+
+  return format(left.unscaled * right.unscaled, left.scale + right.scale);
+}

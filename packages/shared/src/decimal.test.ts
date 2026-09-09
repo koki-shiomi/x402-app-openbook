@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { addDecimals, isDecimalString, roundHalfUp, subtractDecimals } from './decimal.js';
+import {
+  addDecimals,
+  isDecimalString,
+  multiplyDecimals,
+  roundHalfUp,
+  subtractDecimals,
+} from './decimal.js';
 
 describe('isDecimalString', () => {
   it.each(['0', '-1', '1.0071', '0.000001', '-0.5'])('%s を妥当と判定する', (value) => {
@@ -59,5 +65,19 @@ describe('roundHalfUp', () => {
 
   it('丸め後に繰り上がる', () => {
     expect(roundHalfUp('9.999', 2)).toBe('10.00');
+  });
+});
+
+describe('multiplyDecimals', () => {
+  it('小数桁数は両者の和になる', () => {
+    expect(multiplyDecimals('0.010071', '147.25')).toBe('1.48295475');
+  });
+
+  it('整数どうしを乗算できる', () => {
+    expect(multiplyDecimals('12', '3')).toBe('36');
+  });
+
+  it('負の値を扱える', () => {
+    expect(multiplyDecimals('-1.5', '2.0')).toBe('-3.00');
   });
 });
