@@ -57,16 +57,33 @@ context: |
 
   ## 外部依存について確認済みの事実
 
-  - Claude API: Usage & Cost API は日次バケット（`1d`）のみで費用を取得できる。
-    データは通常 5 分以内に反映される。ただし Admin API キーが必須で、
-    「The Admin API is unavailable for individual accounts.」と公式に明記されている。
-    ②の着手前にキー発行可否の確認が必要
-  - Cloudflare: Billable Usage API（`/accounts/{id}/billing/usage/paygo`）で
-    課金額を取得できる。ただし返却は charge period 単位で、多くの製品では日次だが
-    保証はない。日次に分解できるかは②で実データによる確認が必要
-  - Resend / Supabase: 課金額を返す公開 API は存在しない。現状はいずれも無料枠内で
-    費用は 0 円のため、設定値として 0 円を記録する。無料枠を超過しても自動検知
-    できないため、超過に気づく手段を別途用意する必要がある
+  以下は 2026-09 に実際の API を呼び出して確認した結果である。
+
+  - Claude API: `GET /v1/organizations/cost_report` が日次バケット（`1d` のみ）で
+    費用を返す。`group_by[]=description` でモデル別・入出力トークン別に分解できる。
+    **`amount` の単位はセントである。**`currency` は `USD` と返るが、使用量レポートの
+    トークン数と公開単価から計算した値と一致することを確認済み（例: 入力 10,071
+    トークン × $1/MTok = $0.010071 に対し `amount` は `1.0071`）。そのまま USD として
+    扱うと費用を 100 倍に誤って公開するため、必ず 1/100 して USD に直す。
+    利用には Admin API キー（`sk-ant-admin01-`）が必要で、正式な組織を作成しないと
+    発行できない。個人アカウントでは組織スコープの個人キーもサービスアカウントキーも
+    403 `Missing permissions` になる。Admin キーはスコープを選択できず全権限を持つ
+  - Cloudflare: 費用の確認は 3 つのエンドポイントを併用する。
+    `GET /accounts/{id}/subscriptions` が空配列なら有料サブスクリプション（Workers
+    Paid 月額 $5 など）は未契約。`GET /accounts/{id}/billable-usage` が従量課金を返す
+    （**1 リクエストの期間は 31 日以内**）。`GET /accounts/{id}/billing/history` が
+    請求実績を返す。ブログ記載の `/billing/usage/paygo` は存在しない（404）。
+    必要権限は Billing Read。ただし同権限で `billing/profile` から氏名・住所も
+    読めるため、バッチからは呼ばないこと
+  - Resend: `GET /emails/metrics?dimensions=period` が日別の送信数を `data` 配列で
+    返す（`dimensions` の許容値は period / domain / email / broadcast）。
+    **遡及は約 30 日まで**で、それ以前を指定しても切り詰められる。課金額を返す API は
+    なく、`x-resend-daily-quota` / `x-resend-monthly-quota` ヘッダは送信時のみで
+    読み取り系エンドポイントでは返らない
+  - Supabase: `GET /v1/organizations/{slug}` が `plan`（`free` など）を返し、
+    `GET /v1/projects/{ref}/billing/addons` の `selected_addons` が空なら有料アドオン
+    （Custom Domain $10/月、Compute Instance など）は未適用。**read-only の PAT で
+    両方とも取得できる**ことを確認済み。使用量を返すエンドポイントは存在しない
   - AdMob: `accounts.networkReport` で `DATE` / `WEEK` / `MONTH` のディメンションと
     任意の `dateRange` を指定でき、日次・週次・月次のいずれの粒度でも取得できる。
     ただし取得できるのは `ESTIMATED_EARNINGS`（推定値）のみで、API v1 には
