@@ -7,6 +7,7 @@ import {
   type ExchangeRate,
 } from '@openbook/shared';
 
+import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import {
   previousDay,
@@ -60,10 +61,7 @@ app.get('/health', (c) => c.json({ status: 'ok', schemaVersion: SCHEMA_VERSION }
  * ユーザー管理の仕組みは持たない。
  */
 app.post('/admin/rerun', async (c) => {
-  const expected = c.env.ADMIN_TOKEN;
-  const presented = c.req.header('authorization')?.replace(/^Bearer /, '');
-
-  if (expected === undefined || presented === undefined || presented !== expected) {
+  if (!isAuthorized(c.req.header('authorization'), c.env.ADMIN_TOKEN)) {
     return c.json({ error: '認証が必要です' }, 401);
   }
 
