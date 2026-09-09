@@ -1,6 +1,8 @@
 export { canonicalize } from './canonical.js';
+export { createRecord, type CreateRecordInput } from './create.js';
 export { addDecimals, isDecimalString, roundHalfUp, subtractDecimals } from './decimal.js';
-export { validateRecord } from './validate.js';
+export { computeTotals, recordIncomplete, type TotalsInput } from './totals.js';
+export { isCalendarDate, validateRecord } from './validate.js';
 export {
   BASE_CURRENCY,
   CURRENCY_SCALES,
