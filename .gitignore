@@ -35,3 +35,6 @@ yarn-error.*
 # Claude Code (personal overrides)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Wrangler が生成する型定義
+apps/api/worker-configuration.d.ts

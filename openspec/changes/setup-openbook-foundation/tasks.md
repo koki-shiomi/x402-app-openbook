@@ -1,9 +1,9 @@
 ## 1. プロジェクト雛形とデプロイ経路
 
-- [ ] 1.1 pnpm ワークスペースを初期化し、`apps/api`（Worker）と `packages/shared` を作成する。`pnpm install` が成功し、`packages/shared` を `apps/api` から import できることを型チェックで確認する
-- [ ] 1.2 TypeScript（strict）・Vitest・`@cloudflare/vitest-pool-workers` を設定する。サンプルテスト 1 件が `pnpm test` で成功することを確認する
-- [ ] 1.3 Hono による Worker のエントリポイントとヘルスチェック応答を実装する。ローカル実行でヘルスチェックが 200 を返すテストが通ることを確認する
-- [ ] 1.4 R2 バケットのバインディングと Cron Triggers を `wrangler.toml` に定義する。ローカルの R2 バインディングに対する読み書きがテストで動作することを確認する
+- [x] 1.1 pnpm ワークスペースを初期化し、`apps/api`（Worker）と `packages/shared` を作成する。`pnpm install` が成功し、`packages/shared` を `apps/api` から import できることを型チェックで確認する
+- [x] 1.2 TypeScript（strict）・Vitest・`@cloudflare/vitest-pool-workers` を設定する。サンプルテスト 1 件が `pnpm test` で成功することを確認する
+- [x] 1.3 Hono による Worker のエントリポイントとヘルスチェック応答を実装する。ローカル実行でヘルスチェックが 200 を返すテストが通ることを確認する
+- [x] 1.4 R2 バケットのバインディングと Cron Triggers を `wrangler.toml` に定義する。ローカルの R2 バインディングに対する読み書きがテストで動作することを確認する
 - [ ] 1.5 Cloudflare へデプロイし、公開 URL のヘルスチェックが応答することを確認する
 
 ## 2. 日次財務レコードの表現（financial-record）

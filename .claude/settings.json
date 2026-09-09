@@ -22,7 +22,17 @@
       "Bash(gh --version)",
       "Bash(gh repo *)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(openspec instructions *)",
+      "Bash(git push *)",
+      "WebFetch(domain:support.google.com)",
+      "WebFetch(domain:blog.cloudflare.com)",
+      "Bash(openspec validate *)",
+      "Bash(python3 -c \"import yaml;yaml.safe_load\\(open\\('openspec/config.yaml'\\)\\);print\\('config.yaml: OK'\\)\")",
+      "Bash(awk '{print $3}')",
+      "WebFetch(domain:api.supabase.com)",
+      "WebFetch(domain:resend.com)"
     ]
   }
 }

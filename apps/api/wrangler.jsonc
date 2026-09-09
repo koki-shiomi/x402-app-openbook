@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sizet-openbook-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // 日次レコード・生応答・実行記録の保存先。保存物がそのままハッシュ対象になる。
+  "r2_buckets": [
+    {
+      "binding": "RECORDS",
+      "bucket_name": "sizet-openbook-records"
+    }
+  ],
+
+  "triggers": {
+    // 日次実行: 毎日 06:00 UTC。月次クローズ: 毎月 6 日 07:00 UTC。
+    "crons": ["0 6 * * *", "0 7 6 * *"]
+  }
+}
