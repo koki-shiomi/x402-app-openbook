@@ -9,6 +9,7 @@ import {
 
 import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
+import { buildCostSources } from './sources/index.js';
 import {
   previousDay,
   previousMonth,
@@ -18,12 +19,17 @@ import {
 import { isMonthClosed } from './storage.js';
 
 /**
- * 収集ソースの登録先。
+ * 収集ソースを組み立てる。
  *
- * 実際の取得元は後続チェンジ（②費用収集・③収益収集）で追加する。
- * 0 件でも日次実行が成立することを基盤の要件としている。
+ * 費用の 4 提供元を登録する。収益の取得元は後続チェンジ（③）で追加する。
+ * 認証情報が未設定の提供元も登録され、収集時に理由を伴って失敗し欠測になる。
+ *
+ * @param env Worker のバインディングとシークレット
+ * @returns 収集ソースの配列
  */
-const SOURCES: CollectionSource[] = [];
+function buildSources(env: Env): CollectionSource[] {
+  return buildCostSources(env);
+}
 
 /**
  * 実行時の依存を組み立てる。
@@ -78,7 +84,7 @@ app.post('/admin/rerun', async (c) => {
 
   const record = await runDaily(
     c.env.RECORDS,
-    SOURCES,
+    buildSources(c.env),
     date,
     buildRunOptions(new Date().toISOString()),
   );
@@ -99,12 +105,14 @@ export default {
     const now = new Date(controller.scheduledTime).toISOString();
     const options = buildRunOptions(now);
 
+    const sources = buildSources(env);
+
     if (controller.cron === '0 7 6 * *') {
-      await runMonthlyClose(env.RECORDS, SOURCES, previousMonth(now), options);
+      await runMonthlyClose(env.RECORDS, sources, previousMonth(now), options);
       return;
     }
 
-    await runDaily(env.RECORDS, SOURCES, previousDay(now), options);
-    await recollectCurrentMonth(env.RECORDS, SOURCES, options);
+    await runDaily(env.RECORDS, sources, previousDay(now), options);
+    await recollectCurrentMonth(env.RECORDS, sources, options);
   },
 } satisfies ExportedHandler<Env>;

@@ -1,6 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { readRun } from '../src/runlog.js';
 import { closeMonth, getRecord } from '../src/storage.js';
 
 /** wrangler.jsonc の vars で与えたテスト用トークン。 */
@@ -28,7 +29,28 @@ describe('手動再実行', () => {
     const response = await rerun('2026-09-07', TOKEN);
 
     expect(response.status).toBe(200);
-    expect(await getRecord(env.RECORDS, '2026-09-07')).not.toBeNull();
+
+    // テスト環境では費用収集の認証情報を与えていないため、4 提供元すべてが失敗する。
+    // 全ソース失敗時はレコードを作らないのが仕様であり、実行された事実は実行記録に残る。
+    const run = await readRun(env.RECORDS, '2026-09-07');
+    expect(run?.ok).toBe(false);
+    expect(run?.sources.map((source) => source.id).sort()).toEqual([
+      'claude',
+      'cloudflare',
+      'resend',
+      'supabase',
+    ]);
+    expect(run?.sources.every((source) => !source.ok)).toBe(true);
+    expect(await getRecord(env.RECORDS, '2026-09-07')).toBeNull();
+  });
+
+  it('認証情報が未設定の提供元は理由とともに実行記録に残る', async () => {
+    await rerun('2026-09-07', TOKEN);
+
+    const run = await readRun(env.RECORDS, '2026-09-07');
+    const claude = run?.sources.find((source) => source.id === 'claude');
+
+    expect(claude?.reason).toMatch(/CLAUDE_ADMIN_KEY/);
   });
 
   it('認証情報のない要求は拒否され、収集は実行されない', async () => {
