@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addDecimals,
+  divideDecimals,
   isDecimalString,
   multiplyDecimals,
   roundHalfUp,
@@ -79,5 +80,34 @@ describe('multiplyDecimals', () => {
 
   it('負の値を扱える', () => {
     expect(multiplyDecimals('-1.5', '2.0')).toBe('-3.00');
+  });
+});
+
+describe('divideDecimals', () => {
+  it('割り切れない場合は指定桁数へ四捨五入する', () => {
+    expect(divideDecimals('20.00', '30', 6)).toBe('0.666667');
+    expect(divideDecimals('20.00', '28', 6)).toBe('0.714286');
+  });
+
+  it('割り切れる場合も指定桁数へ揃える', () => {
+    expect(divideDecimals('10', '2', 6)).toBe('5.000000');
+  });
+
+  it('小数を含む除数を扱える', () => {
+    expect(divideDecimals('1', '0.5', 2)).toBe('2.00');
+  });
+
+  it('負の値を扱える', () => {
+    expect(divideDecimals('-20.00', '30', 6)).toBe('-0.666667');
+  });
+
+  it('0 で除算すると例外を投げる', () => {
+    expect(() => divideDecimals('1', '0', 6)).toThrow(/0/);
+  });
+
+  it('浮動小数点を経由しない', () => {
+    // 1/3 を Number 経由で計算すると 0.3333333333333333 になり、
+    // 10 進固定小数点での丸めと桁が揃わない。
+    expect(divideDecimals('1', '3', 20)).toBe('0.33333333333333333333');
   });
 });

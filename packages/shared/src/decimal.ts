@@ -154,3 +154,38 @@ export function multiplyDecimals(a: string, b: string): string {
 
   return format(left.unscaled * right.unscaled, left.scale + right.scale);
 }
+
+/**
+ * 10 進小数を除算し、指定の小数桁数へ四捨五入する。
+ *
+ * 除算は割り切れないことがあるため、乗算と異なり結果の桁数を呼び出し側が指定する。
+ * 月額の日割りなど、浮動小数点を経由すると誤差が入る計算に用いる。
+ *
+ * @param dividend 割られる値
+ * @param divisor 割る値
+ * @param scale 結果の小数桁数
+ * @returns 商の 10 進小数の文字列
+ * @throws {RangeError} 除数が 0 の場合
+ */
+export function divideDecimals(dividend: string, divisor: string, scale: number): string {
+  const left = parse(dividend);
+  const right = parse(divisor);
+
+  if (right.unscaled === 0n) {
+    throw new RangeError('0 で除算することはできません');
+  }
+
+  // 商を指定桁数より 1 桁多く求め、その桁を見て四捨五入する。
+  const shift = BigInt(scale + 1 + right.scale - left.scale);
+  const scaledDividend =
+    shift >= 0n ? left.unscaled * 10n ** shift : left.unscaled / 10n ** -shift;
+
+  const quotient = scaledDividend / right.unscaled;
+  const isNegative = quotient < 0n;
+  const magnitude = isNegative ? -quotient : quotient;
+
+  const lastDigit = magnitude % 10n;
+  const rounded = lastDigit >= 5n ? magnitude / 10n + 1n : magnitude / 10n;
+
+  return format(isNegative ? -rounded : rounded, scale);
+}

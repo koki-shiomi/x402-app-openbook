@@ -3,6 +3,7 @@ export { convertToJpy, fetchUsdJpyRate, type FetchRateOptions } from './exchange
 export { createRecord, type CreateRecordInput } from './create.js';
 export {
   addDecimals,
+  divideDecimals,
   isDecimalString,
   multiplyDecimals,
   roundHalfUp,
