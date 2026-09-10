@@ -1,6 +1,12 @@
 import { isDecimalString } from './decimal.js';
 import { computeTotals } from './totals.js';
-import { BASE_CURRENCY, CURRENCY_SCALES, type DailyRecord, type Entry } from './record.js';
+import {
+  BASE_CURRENCY,
+  CURRENCY_SCALES,
+  type CurrencyCode,
+  type DailyRecord,
+  type Entry,
+} from './record.js';
 
 /** 取得方式として認められる値。 */
 const ACQUISITIONS = new Set(['measured', 'derived', 'estimated']);
@@ -26,6 +32,35 @@ export function isCalendarDate(date: string): boolean {
 
   const parsed = new Date(`${date}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+}
+
+/**
+ * 10 進小数の文字列の小数桁数を数える。
+ *
+ * @param value 10 進小数の文字列
+ * @returns 小数点以下の桁数。小数点がなければ 0
+ */
+function scaleOf(value: string): number {
+  const separatorIndex = value.indexOf('.');
+  return separatorIndex === -1 ? 0 : value.length - separatorIndex - 1;
+}
+
+/**
+ * 金額が通貨ごとに固定した小数桁数で表現されているかを検証する。
+ *
+ * 桁数が揺れると、同じ金額から異なるバイト列が生成され、ハッシュ照合が成立しなくなる。
+ *
+ * @param value 検証する金額
+ * @param currency 桁数を決める通貨
+ * @param path エラーメッセージに含める位置
+ * @returns 違反内容の配列。妥当なら空配列
+ */
+function validateScale(value: string, currency: CurrencyCode, path: string): string[] {
+  const expected = CURRENCY_SCALES[currency];
+
+  return scaleOf(value) === expected
+    ? []
+    : [`${path} は ${currency} の小数 ${expected} 桁で表現する必要があります: ${value}`];
 }
 
 /**
@@ -55,9 +90,15 @@ function validateEntry(entry: Entry, path: string): string[] {
   }
   if (typeof entry.amount !== 'string' || !isDecimalString(entry.amount)) {
     errors.push(`${path}.amount は 10 進小数の文字列である必要があります`);
+  } else if (entry.currency in CURRENCY_SCALES) {
+    errors.push(...validateScale(entry.amount, entry.currency, `${path}.amount`));
   }
-  if (entry.amountJpy !== undefined && !isDecimalString(entry.amountJpy)) {
-    errors.push(`${path}.amountJpy は 10 進小数の文字列である必要があります`);
+  if (entry.amountJpy !== undefined) {
+    if (!isDecimalString(entry.amountJpy)) {
+      errors.push(`${path}.amountJpy は 10 進小数の文字列である必要があります`);
+    } else {
+      errors.push(...validateScale(entry.amountJpy, BASE_CURRENCY, `${path}.amountJpy`));
+    }
   }
 
   // 公開値のうちどれが推定かを利用者が判別できるよう、算出根拠の有無を取得方式と対応させる。
@@ -102,6 +143,13 @@ export function validateRecord(record: DailyRecord): string[] {
   }
   if (typeof record.revision !== 'number' || record.revision < 1) {
     errors.push('revision は 1 以上の数値である必要があります');
+  }
+
+  for (const key of ['costJpy', 'revenueJpy', 'profitJpy'] as const) {
+    const value = record.totals?.[key];
+    if (typeof value === 'string' && isDecimalString(value)) {
+      errors.push(...validateScale(value, BASE_CURRENCY, `totals.${key}`));
+    }
   }
 
   record.costs.forEach((entry, index) => {

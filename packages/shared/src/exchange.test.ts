@@ -87,7 +87,7 @@ describe('convertToJpy', () => {
   });
 
   it('同一レコード内の複数エントリに同一レートが適用される', () => {
-    const other: Entry = { ...usdEntry, category: 'output-tokens', amount: '0.00189' };
+    const other: Entry = { ...usdEntry, category: 'output-tokens', amount: '0.001890' };
 
     const converted = [usdEntry, other].map((entry) => convertToJpy(entry, RATE));
 
