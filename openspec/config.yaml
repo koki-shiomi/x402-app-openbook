@@ -69,17 +69,28 @@ context: |
     発行できない。個人アカウントでは組織スコープの個人キーもサービスアカウントキーも
     403 `Missing permissions` になる。Admin キーはスコープを選択できず全権限を持つ
   - Cloudflare: 費用の確認は 3 つのエンドポイントを併用する。
-    `GET /accounts/{id}/subscriptions` が空配列なら有料サブスクリプション（Workers
-    Paid 月額 $5 など）は未契約。`GET /accounts/{id}/billable-usage` が従量課金を返す
-    （**1 リクエストの期間は 31 日以内**）。`GET /accounts/{id}/billing/history` が
-    請求実績を返す。ブログ記載の `/billing/usage/paygo` は存在しない（404）。
+    `GET /accounts/{id}/subscriptions` が契約中のサブスクリプションを返す（Workers
+    Paid は月額 $5）。**R2 を有効にすると価格 0 USD の `R2 Paid`（`rate_plan.id` が
+    `r2_paid`）が作成される**ため、空かどうかではなく価格で判定する。期間や時点を
+    指定するパラメータはなく（公式ドキュメント）、過去の時点の契約は取得できない。応答には
+    `client_secrets` 項目がある（確認時は null）。`GET /accounts/{id}/billable-usage` が従量課金を
+    FOCUS 形式の行で返す。**無料枠に含まれる利用も請求額（`BilledCost`）0 の行として
+    返る**ため、行の有無では従量課金の発生を判定できない（R2 の利用開始後、操作回数と
+    保存容量の行が日単位の charge period で返ることを確認）。期間指定の **`to` は
+    終了日を含まず、`from` より後でなければならない**（同日を指定すると 400）。
+    **1 リクエストの期間は 90 日以内**（91 日で `max_date_range_days` エラー）。
+    各行の `BillingAccountName` には請求先のメールアドレスを含むアカウント名が入る。
+    `GET /accounts/{id}/billing/history` が請求実績を返す。ブログ記載の
+    `/billing/usage/paygo` は存在しない（404）。
     必要権限は Billing Read。ただし同権限で `billing/profile` から氏名・住所も
     読めるため、バッチからは呼ばないこと
   - Resend: `GET /emails/metrics?dimensions=period` が日別の送信数を `data` 配列で
     返す（`dimensions` の許容値は period / domain / email / broadcast）。
     **遡及は約 30 日まで**で、それ以前を指定しても切り詰められる。課金額を返す API は
     なく、`x-resend-daily-quota` / `x-resend-monthly-quota` ヘッダは送信時のみで
-    読み取り系エンドポイントでは返らない
+    読み取り系エンドポイントでは返らない。API キーの権限は `full_access` と
+    `sending_access`（送信のみ）の 2 種類で読み取り専用はなく、送信数の取得には
+    `full_access` が必要
   - Supabase: `GET /v1/organizations/{slug}` が `plan`（`free` など）を返し、
     `GET /v1/projects/{ref}/billing/addons` の `selected_addons` が空なら有料アドオン
     （Custom Domain $10/月、Compute Instance など）は未適用。**read-only の PAT で
