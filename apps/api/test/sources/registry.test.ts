@@ -154,5 +154,14 @@ describe('月次クローズでの遡及制限', () => {
 
     // Supabase は前日までしか遡れないため、8 月の全日が再収集対象外になる。
     expect(close.skipped?.some((entry) => entry.source === 'supabase')).toBe(true);
+
+    const record = JSON.parse(
+      decoder.decode((await getRecord(env.RECORDS, '2026-08-31'))!),
+    ) as DailyRecord;
+    expect(record.costs.some((entry) => entry.source === 'supabase')).toBe(true);
+
+    // Cloudflare もサブスクリプションが現在の状態しか返さないため、前日までしか遡れない。
+    expect(close.skipped?.some((entry) => entry.source === 'cloudflare')).toBe(true);
+    expect(record.costs.some((entry) => entry.source === 'cloudflare')).toBe(true);
   });
 });

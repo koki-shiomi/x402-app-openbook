@@ -96,6 +96,34 @@ function partitionByReach(
 }
 
 /**
+ * 遡及できる収集ソースだけで対象日を収集し、遡及できないソースは既存の値を引き継ぐ。
+ *
+ * 遡及できないソースを単に除外して収集すると、そのソースの既存のエントリが
+ * 新しいリビジョンから抜け落ち、欠測としても記録されないまま公開値から消える。
+ * 遡及できるソースが 1 件もない日は収集せず、既存の最新リビジョンをそのまま維持する。
+ *
+ * @param bucket 保存先の R2 バケット
+ * @param sources 登録されている収集ソース
+ * @param date 対象日（YYYY-MM-DD 形式）
+ * @param options 実行の依存
+ * @returns 保存または維持したレコードと、遡及制限で除外したソースの識別子
+ */
+export async function collectWithinReach(
+  bucket: R2Bucket,
+  sources: readonly CollectionSource[],
+  date: string,
+  options: RunOptions,
+): Promise<{ record: DailyRecord | null; skipped: string[] }> {
+  const { usable, skipped } = partitionByReach(sources, date, options.now);
+  if (usable.length === 0) {
+    return { record: null, skipped };
+  }
+
+  const record = await runDaily(bucket, usable, date, options, skipped);
+  return { record, skipped };
+}
+
+/**
  * 当月内のうち、既にレコードがある日を再収集する。
  *
  * 広告収益は約 4 時間遅れて反映され、出現から最初の 48 時間は頻繁に変動する。
@@ -125,8 +153,7 @@ export async function recollectCurrentMonth(
       continue;
     }
 
-    const { usable } = partitionByReach(sources, date, options.now);
-    const after = await runDaily(bucket, usable, date, options);
+    const { record: after } = await collectWithinReach(bucket, sources, date, options);
 
     if (after !== null && after.revision !== before) {
       updated.push(date);
@@ -155,8 +182,12 @@ async function readRevision(bucket: R2Bucket, date: string): Promise<number | nu
 /**
  * 月次クローズを実行する。
  *
- * 対象月の全日を再収集して最終リビジョンを確定させ、クローズ済みとして記録する。
- * 以降その月への書き込みは拒否され、この月がハッシュ刻印の対象となる。
+ * 対象月のうち既存のレコードがある日を再収集して最終リビジョンを確定させ、
+ * クローズ済みとして記録する。以降その月への書き込みは拒否され、この月が
+ * ハッシュ刻印の対象となる。
+ *
+ * レコードがない日は収集しない。レコードがない日には収集を開始する前の日が含まれ、
+ * 作成すると稼働開始前の日を遡って取り込むことになる。
  *
  * 取得元の遡及可能期間を超えている日は再収集せず、既存の最新リビジョンを維持する。
  * 再収集を試みなかった取得元と対象日はクローズ記録に残す。
@@ -177,20 +208,13 @@ export async function runMonthlyClose(
   const skippedBySource = new Map<string, string[]>();
 
   for (const date of datesInMonth(month)) {
-    const { usable, skipped } = partitionByReach(sources, date, options.now);
-    const existingRevision = await readRevision(bucket, date);
-
-    // 既存のレコードがある日にだけ記録する。レコードが無い日は維持すべき値もないため、
-    // 遡及できないことを記録しても公開データの解釈には寄与しない。
-    if (existingRevision !== null) {
-      for (const id of skipped) {
-        skippedBySource.set(id, [...(skippedBySource.get(id) ?? []), date]);
-      }
+    if ((await readRevision(bucket, date)) === null) {
+      continue;
     }
 
-    // 遡及できる取得元が 1 件もない日は、既存の最新リビジョンをそのまま維持する。
-    if (usable.length > 0) {
-      await runDaily(bucket, usable, date, options);
+    const { skipped } = await collectWithinReach(bucket, sources, date, options);
+    for (const id of skipped) {
+      skippedBySource.set(id, [...(skippedBySource.get(id) ?? []), date]);
     }
 
     const revision = await readRevision(bucket, date);

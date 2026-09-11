@@ -142,6 +142,62 @@ describe('再実行の冪等性', () => {
     expect(record.correction).toMatchObject({ supersedes: 1 });
     expect(record.totals.costJpy).toBe('5.00');
   });
+
+  /** USD 建ての費用を返す収集ソース。 */
+  const usdSource: CollectionSource = {
+    id: 'claude',
+    revisable: false,
+    async collect() {
+      const entry: Entry = {
+        source: 'claude',
+        category: 'model',
+        acquisition: 'measured',
+        revisable: false,
+        currency: 'USD',
+        amount: '0.010071',
+      };
+      return { costs: [entry], revenues: [] };
+    },
+  };
+
+  /**
+   * 実行時刻を取得時刻として記録するレート取得を持つ実行の依存を作る。
+   *
+   * @param now 実行時刻
+   * @param rate レート値
+   * @returns 実行の依存
+   */
+  function optionsAt(now: string, rate = '147.25') {
+    return {
+      now,
+      fetchRate: async () => ({
+        pair: 'USD/JPY',
+        rate,
+        provider: 'frankfurter',
+        publishedOn: '2026-09-07',
+        fetchedAt: now,
+      }),
+    };
+  }
+
+  it('為替レートの取得時刻だけが異なる再実行ではリビジョンが増えない', async () => {
+    await runDaily(env.RECORDS, [usdSource], '2026-09-07', optionsAt('2026-09-08T06:00:00Z'));
+    await runDaily(env.RECORDS, [usdSource], '2026-09-07', optionsAt('2026-09-09T06:00:00Z'));
+
+    expect(await env.RECORDS.head(recordKey('2026-09-07', 2))).toBeNull();
+  });
+
+  it('為替レートの値が変わった再実行では訂正リビジョンが追加される', async () => {
+    await runDaily(env.RECORDS, [usdSource], '2026-09-07', optionsAt('2026-09-08T06:00:00Z'));
+    await runDaily(
+      env.RECORDS,
+      [usdSource],
+      '2026-09-07',
+      optionsAt('2026-09-09T06:00:00Z', '148.00'),
+    );
+
+    expect(await env.RECORDS.head(recordKey('2026-09-07', 2))).not.toBeNull();
+  });
 });
 
 describe('クローズ済み月の保護', () => {

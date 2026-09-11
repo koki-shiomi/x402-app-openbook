@@ -11,6 +11,7 @@ import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import { buildCostSources } from './sources/index.js';
 import {
+  collectWithinReach,
   previousDay,
   previousMonth,
   recollectCurrentMonth,
@@ -82,14 +83,15 @@ app.post('/admin/rerun', async (c) => {
     return c.json({ error: 'クローズ済みの月は再実行できません' }, 409);
   }
 
-  const record = await runDaily(
+  // 遡及できない取得元は呼び出さず、既存の値を引き継ぐ。
+  const { record, skipped } = await collectWithinReach(
     c.env.RECORDS,
     buildSources(c.env),
     date,
     buildRunOptions(new Date().toISOString()),
   );
 
-  return c.json({ date, revision: record?.revision ?? null });
+  return c.json({ date, revision: record?.revision ?? null, skipped });
 });
 
 export default {
