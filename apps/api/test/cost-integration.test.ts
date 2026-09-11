@@ -28,8 +28,14 @@ const RATE = {
   fetchedAt: '2026-09-09T06:00:00Z',
 };
 
-/** 全提供元の応答を模す。failing に含めた提供元は失敗させる。 */
-function stubProviders(failing: string[] = []) {
+/**
+ * 全提供元の応答を模す。
+ *
+ * @param failing 失敗させる提供元
+ * @param overrides 差し替える応答（経路をキーとする）
+ * @returns フェッチ関数
+ */
+function stubProviders(failing: string[] = [], overrides: Record<string, unknown> = {}) {
   const routes: Record<string, unknown> = {
     cost_report: {
       data: [
@@ -53,6 +59,7 @@ function stubProviders(failing: string[] = []) {
     '/v1/organizations/org-1': { id: 'org-1', plan: 'free' },
     '/v1/projects': [{ ref: 'p1', organization_slug: 'org-1' }],
     'billing/addons': { selected_addons: [] },
+    ...overrides,
   };
 
   const owner: Record<string, string> = {
@@ -176,5 +183,30 @@ describe('生応答の保存', () => {
       expect(text).not.toContain('sk-ant-admin01');
       expect(text).not.toContain('sbp_');
     }
+  });
+
+  it('Cloudflare の従量課金はアカウント名を除いて保存される', async () => {
+    const accountName = "owner@example.com's Account";
+    const sources = buildCostSources(FULL_ENV, {
+      fetchImpl: stubProviders([], {
+        'billable-usage': {
+          result: [
+            {
+              BillingAccountName: accountName,
+              BilledCost: 0,
+              ServiceName: 'R2 Storage Class A Operations (First 1M included)',
+            },
+          ],
+          success: true,
+        },
+      }),
+    });
+
+    await runDaily(env.RECORDS, sources, '2026-09-08', OPTIONS);
+
+    const text = await (await env.RECORDS.get(rawKey('2026-09-08', 'cloudflare')))!.text();
+    expect(text).not.toContain(accountName);
+    expect(text).not.toContain('BillingAccountName');
+    expect(text).toContain('BilledCost');
   });
 });

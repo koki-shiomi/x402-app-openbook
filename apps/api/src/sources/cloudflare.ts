@@ -1,4 +1,10 @@
-import { CURRENCY_SCALES, roundHalfUp, type Entry } from '@openbook/shared';
+import {
+  addDecimals,
+  CURRENCY_SCALES,
+  isDecimalString,
+  roundHalfUp,
+  type Entry,
+} from '@openbook/shared';
 
 import type { CollectionResult, CollectionSource } from '../batch.js';
 import type { CloudflareConfig } from './config.js';
@@ -12,12 +18,23 @@ import type { CloudflareConfig } from './config.js';
  *
  * 請求プロフィールは請求情報の読み取り権限で取得でき、氏名・住所・請求先メール
  * アドレスを返す。権限設定では防げないため、このモジュールからは呼び出さない。
+ *
+ * サブスクリプション一覧は現在の契約しか返さず、過去の時点を指定する手段がない。
+ * 過去日に現在の契約を適用すると、その日の実態と異なる判定になるため、
+ * 過去日は取得できないものとして扱う。
  */
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 
-/** 従量課金の 1 リクエストあたりの期間上限（日）。提供元が上限を設けている。 */
-const MAX_USAGE_RANGE_DAYS = 31;
+/** 従量課金の 1 リクエストあたりの期間上限（日）。91 日以上を指定すると提供元が要求を拒否する。 */
+const MAX_USAGE_RANGE_DAYS = 90;
+
+/**
+ * 現在の状態を対象日の根拠として使える日数。
+ *
+ * 日次バッチは前日を対象に実行するため、当日と前日までを取得可能とする。
+ */
+const REACHABLE_DAYS = 1;
 
 /** 対象外とする費用を示す語。ドメイン登録費はアプリの運用費と性質が異なる。 */
 const EXCLUDED_DESCRIPTION = /domain/i;
@@ -28,6 +45,34 @@ interface BillingHistoryItem {
   occurred_at: string;
   amount: number;
   description?: string;
+}
+
+/**
+ * サブスクリプション 1 件。判定と認証情報の除去に用いる項目を明示する。
+ *
+ * R2 を有効にすると、価格 0 の契約（R2 Paid）が作成される。
+ */
+interface Subscription {
+  /** 価格。JSON の数値で返る。 */
+  price?: unknown;
+  /** プラン。表示名を算出根拠に用いる。 */
+  rate_plan?: { id?: string; public_name?: string };
+  /** 決済用のクライアントシークレット。認証情報を含みうるため保存しない。 */
+  client_secrets?: unknown;
+  [field: string]: unknown;
+}
+
+/**
+ * 従量課金 1 行。FOCUS 形式で返る項目のうち、判定と個人情報の除去に用いるものを明示する。
+ *
+ * 無料枠に含まれる利用も、請求額 0 の行として返る。
+ */
+interface UsageRow {
+  /** 請求額。JSON の数値で返る。 */
+  BilledCost?: unknown;
+  /** アカウント名。請求先のメールアドレスを含む。 */
+  BillingAccountName?: unknown;
+  [field: string]: unknown;
 }
 
 /** Cloudflare 収集ソースの依存。 */
@@ -63,21 +108,24 @@ async function callApi<T>(
 /**
  * 対象日を含む取得期間を、上限以内の区間へ分割する。
  *
+ * 提供元の期間指定は終端を含まず、終端は開始より後でなければならない。そのため
+ * 終了日の翌日を全体の終端とし、各区間の終端も含まない日付で表す。
  * 現在は 1 日分のみを対象とするため区間は 1 つだが、期間を広げても上限を
  * 超えないことを保証する形にしておく。
  *
  * @param from 開始日（YYYY-MM-DD 形式）
  * @param to 終了日（YYYY-MM-DD 形式、含む）
- * @returns 上限以内の区間の配列
+ * @returns 上限以内の区間の配列。各区間の `to` は終端を含まない日付
  */
 export function splitUsageRange(from: string, to: string): { from: string; to: string }[] {
   const ranges: { from: string; to: string }[] = [];
   let cursor = new Date(`${from}T00:00:00Z`);
   const end = new Date(`${to}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 1);
 
-  while (cursor <= end) {
+  while (cursor < end) {
     const chunkEnd = new Date(cursor);
-    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + MAX_USAGE_RANGE_DAYS - 1);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + MAX_USAGE_RANGE_DAYS);
 
     const rangeEnd = chunkEnd > end ? end : chunkEnd;
     ranges.push({
@@ -85,11 +133,97 @@ export function splitUsageRange(from: string, to: string): { from: string; to: s
       to: rangeEnd.toISOString().slice(0, 10),
     });
 
-    cursor = new Date(rangeEnd);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    cursor = rangeEnd;
   }
 
   return ranges;
+}
+
+/**
+ * 数値を 10 進小数の文字列へ変換する。
+ *
+ * JavaScript は極端に小さい・大きい数値を指数表記（例: `1e-7`）で文字列化するため、
+ * 指数を展開して 10 進小数の文字列にする。数値の最短表現をそのまま展開し、
+ * 桁の追加や丸めは行わない。
+ *
+ * @param value 変換する有限の数値
+ * @returns 10 進小数の文字列
+ * @throws {TypeError} 10 進小数として表せない場合
+ */
+function numberToDecimalString(value: number): string {
+  const text = String(value);
+  if (isDecimalString(text)) {
+    return text;
+  }
+
+  const match = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text);
+  if (match === null) {
+    throw new TypeError(`10 進小数へ変換できない数値です: ${text}`);
+  }
+
+  const sign = match[1] ?? '';
+  const digits = (match[2] ?? '') + (match[3] ?? '');
+  const pointIndex = 1 + Number(match[4]);
+
+  if (pointIndex <= 0) {
+    return `${sign}0.${'0'.repeat(-pointIndex)}${digits}`;
+  }
+  if (pointIndex >= digits.length) {
+    return `${sign}${digits}${'0'.repeat(pointIndex - digits.length)}`;
+  }
+  return `${sign}${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`;
+}
+
+/**
+ * JSON の数値で返る金額を 10 進小数の文字列へ変換する。
+ *
+ * 浮動小数点のまま加算・比較すると、相殺して 0 になるはずの合計が 0 に
+ * ならない場合があるため、10 進小数の文字列にしてから扱う。
+ *
+ * @param value 金額として返された値
+ * @param unconfirmedMessage 有限の数値でない場合のエラーメッセージ
+ * @returns 10 進小数の文字列
+ * @throws {Error} 有限の数値でない場合
+ */
+function toDecimalAmount(value: unknown, unconfirmedMessage: string): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(unconfirmedMessage);
+  }
+  return numberToDecimalString(value);
+}
+
+/**
+ * 10 進小数の文字列が 0 を表すかを判定する。
+ *
+ * @param value 10 進小数の文字列
+ * @returns 0 なら true
+ */
+function isZero(value: string): boolean {
+  return /^-?0(\.0+)?$/.test(value);
+}
+
+/**
+ * サブスクリプションから、認証情報を含みうるクライアントシークレットを取り除く。
+ *
+ * @param subscription サブスクリプション 1 件
+ * @returns クライアントシークレットを除いた複製
+ */
+function withoutClientSecrets(subscription: Subscription): Subscription {
+  const copy = { ...subscription };
+  delete copy.client_secrets;
+  return copy;
+}
+
+/**
+ * 従量課金の行から、請求先のメールアドレスを含むアカウント名を取り除く。
+ *
+ * @param row 従量課金の行
+ * @returns アカウント名を除いた行の複製
+ */
+function withoutAccountName(row: UsageRow): UsageRow {
+  const copy = { ...row };
+  delete copy.BillingAccountName;
+  return copy;
 }
 
 /**
@@ -109,30 +243,53 @@ export function createCloudflareSource(
     id: 'cloudflare',
     revisable: false,
 
+    canCollect(date: string, now: string): boolean {
+      const limit = new Date(now);
+      limit.setUTCDate(limit.getUTCDate() - REACHABLE_DAYS);
+
+      return date >= limit.toISOString().slice(0, 10);
+    },
+
     async collect(date: string): Promise<CollectionResult> {
-      const subscriptions = await callApi<{ result: unknown[] }>(
+      const subscriptions = await callApi<{ result: Subscription[] | null }>(
         fetchImpl,
         config,
         'subscriptions',
       );
-      if ((subscriptions.result ?? []).length > 0) {
+      const subscriptionRows = subscriptions.result ?? [];
+      const prices = subscriptionRows.map((subscription) =>
+        toDecimalAmount(
+          subscription.price,
+          '価格を確認できないサブスクリプションがあるため 0 円として記録できません',
+        ),
+      );
+      if (!prices.every(isZero)) {
         throw new Error(
-          '有料サブスクリプションが存在するため 0 円として記録できません。費用の取得方法を見直してください',
+          '価格が 0 でないサブスクリプションが存在するため 0 円として記録できません。費用の取得方法を見直してください',
         );
       }
 
-      const usageResults: unknown[] = [];
+      const usageRows: UsageRow[] = [];
       for (const range of splitUsageRange(date, date)) {
-        const usage = await callApi<{ result: unknown[] }>(
+        const usage = await callApi<{ result: UsageRow[] | null }>(
           fetchImpl,
           config,
           `billable-usage?from=${range.from}&to=${range.to}`,
         );
-        usageResults.push(...(usage.result ?? []));
+        usageRows.push(...(usage.result ?? []));
       }
-      if (usageResults.length > 0) {
+
+      const billedTotal = addDecimals(
+        usageRows.map((row) =>
+          toDecimalAmount(
+            row.BilledCost,
+            '請求額を確認できない従量課金の行があるため 0 円として記録できません',
+          ),
+        ),
+      );
+      if (!isZero(billedTotal)) {
         throw new Error(
-          '従量課金が発生しているため 0 円として記録できません。費用の取得方法を見直してください',
+          `従量課金の請求額が発生しているため 0 円として記録できません（合計 ${billedTotal}）。費用の取得方法を見直してください`,
         );
       }
 
@@ -157,6 +314,15 @@ export function createCloudflareSource(
         );
       }
 
+      const planNames = subscriptionRows.map(
+        (subscription) =>
+          subscription.rate_plan?.public_name ?? subscription.rate_plan?.id ?? '名称不明',
+      );
+      const subscriptionNote =
+        planNames.length === 0
+          ? `サブスクリプション 0 件`
+          : `サブスクリプション ${planNames.length} 件（${planNames.join('・')}、いずれも価格 0）`;
+
       const excludedNote =
         excluded.length === 0
           ? ''
@@ -172,7 +338,8 @@ export function createCloudflareSource(
         amountJpy: roundHalfUp('0', CURRENCY_SCALES.JPY),
         basis: {
           description:
-            `サブスクリプション 0 件、従量課金 0 件、対象日の請求なしを確認${excludedNote}`,
+            `${subscriptionNote}、従量課金 ${usageRows.length} 行（請求額の合計 ${billedTotal}）、` +
+            `対象日の請求なしを確認${excludedNote}`,
           plan: 'free',
         },
       };
@@ -181,8 +348,8 @@ export function createCloudflareSource(
         costs: [entry],
         revenues: [],
         raw: {
-          subscriptions: subscriptions.result,
-          billableUsage: usageResults,
+          subscriptions: subscriptionRows.map(withoutClientSecrets),
+          billableUsage: usageRows.map(withoutAccountName),
           billingHistory: history.result,
         },
       };
