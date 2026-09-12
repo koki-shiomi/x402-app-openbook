@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   resolveWorkspaceFilter,
+  loadAdmobConfig,
   loadCostConfig,
+  type AdmobConfigInput,
   type CostConfigInput,
 } from '../../src/sources/config.js';
 
@@ -79,5 +81,46 @@ describe('loadCostConfig', () => {
     const config = loadCostConfig({ ...COMPLETE, RESEND_PLAN: 'pro:20.00' });
 
     expect(config.resend).toEqual({ apiKey: 're_x', plan: 'pro', monthlyAmountUsd: '20.00' });
+  });
+});
+
+const ADMOB_COMPLETE: AdmobConfigInput = {
+  ADMOB_CLIENT_ID: 'client-1',
+  ADMOB_CLIENT_SECRET: 'secret-1',
+  ADMOB_REFRESH_TOKEN: 'refresh-1',
+  ADMOB_PUBLISHER_ID: 'pub-1',
+  ADMOB_APP_ID: 'ca-app-pub-1~2',
+};
+
+describe('loadAdmobConfig', () => {
+  it('5 つがそろっていれば設定を返す', () => {
+    const config = loadAdmobConfig(ADMOB_COMPLETE);
+
+    expect(config.admob).toEqual({
+      clientId: 'client-1',
+      clientSecret: 'secret-1',
+      refreshToken: 'refresh-1',
+      publisherId: 'pub-1',
+      appId: 'ca-app-pub-1~2',
+    });
+    expect(config.missing).toEqual([]);
+  });
+
+  it('いずれかが未設定なら理由つきで欠ける', () => {
+    const config = loadAdmobConfig({ ...ADMOB_COMPLETE, ADMOB_APP_ID: undefined });
+
+    expect(config.admob).toBeUndefined();
+    expect(config.missing).toEqual([
+      { source: 'admob', reason: expect.stringMatching(/ADMOB_APP_ID/) },
+    ]);
+  });
+
+  it('アプリ ID がパブリッシャー ID に属さなければ設定誤りとして欠ける', () => {
+    const config = loadAdmobConfig({ ...ADMOB_COMPLETE, ADMOB_APP_ID: 'ca-app-pub-9~2' });
+
+    expect(config.admob).toBeUndefined();
+    expect(config.missing).toEqual([
+      { source: 'admob', reason: expect.stringMatching(/パブリッシャー ID/) },
+    ]);
   });
 });

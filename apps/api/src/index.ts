@@ -9,7 +9,7 @@ import {
 
 import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
-import { buildCostSources } from './sources/index.js';
+import { buildCostSources, buildRevenueSources } from './sources/index.js';
 import {
   collectWithinReach,
   previousDay,
@@ -29,7 +29,7 @@ import { isMonthClosed } from './storage.js';
  * @returns 収集ソースの配列
  */
 function buildSources(env: Env): CollectionSource[] {
-  return buildCostSources(env);
+  return [...buildCostSources(env), ...buildRevenueSources(env)];
 }
 
 /**

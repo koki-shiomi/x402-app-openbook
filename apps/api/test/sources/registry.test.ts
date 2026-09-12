@@ -5,7 +5,7 @@ import type { DailyRecord } from '@openbook/shared';
 
 import { runDaily } from '../../src/batch.js';
 import { runMonthlyClose } from '../../src/schedule.js';
-import { buildCostSources } from '../../src/sources/index.js';
+import { buildCostSources, buildRevenueSources } from '../../src/sources/index.js';
 import { getRecord } from '../../src/storage.js';
 
 const decoder = new TextDecoder();
@@ -36,6 +36,23 @@ function stubAllProviders() {
     '/v1/organizations/org-1': { id: 'org-1', plan: 'free' },
     '/v1/projects': [{ ref: 'p1', organization_slug: 'org-1' }],
     'billing/addons': { selected_addons: [] },
+    'oauth2.googleapis.com/token': { access_token: 'at-1', expires_in: 3599 },
+    'networkReport:generate': [
+      { header: { localizationSettings: { currencyCode: 'JPY' } } },
+      {
+        row: {
+          dimensionValues: { DATE: { value: '20260908' }, FORMAT: { value: 'banner' } },
+          metricValues: { ESTIMATED_EARNINGS: { microsValue: '208376' } },
+        },
+      },
+      { footer: { matchingRowCount: '1' } },
+    ],
+    '/accounts/pub-1': {
+      name: 'accounts/pub-1',
+      publisherId: 'pub-1',
+      reportingTimeZone: 'Asia/Tokyo',
+      currencyCode: 'JPY',
+    },
   };
 
   const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -61,6 +78,11 @@ const FULL_ENV = {
   RESEND_PLAN: 'free',
   SUPABASE_PAT: 'sbp_x',
   SUPABASE_ORG_SLUG: 'org-1',
+  ADMOB_CLIENT_ID: 'client-1',
+  ADMOB_CLIENT_SECRET: 'secret-1',
+  ADMOB_REFRESH_TOKEN: 'refresh-1',
+  ADMOB_PUBLISHER_ID: 'pub-1',
+  ADMOB_APP_ID: 'ca-app-pub-1~2',
 };
 
 const OPTIONS = { now: '2026-09-09T06:00:00Z', fetchRate: async () => undefined };
@@ -99,6 +121,53 @@ describe('収集ソースの登録', () => {
       'resend',
       'supabase',
     ]);
+  });
+});
+
+describe('収益の収集ソースの登録', () => {
+  it('日次実行で 5 提供元すべてが呼び出される', async () => {
+    const { fetchImpl } = stubAllProviders();
+    const sources = [
+      ...buildCostSources(FULL_ENV, { fetchImpl }),
+      ...buildRevenueSources(FULL_ENV, { fetchImpl }),
+    ];
+
+    await runDaily(env.RECORDS, sources, '2026-09-08', OPTIONS);
+
+    const record = JSON.parse(
+      decoder.decode((await getRecord(env.RECORDS, '2026-09-08'))!),
+    ) as DailyRecord;
+
+    expect(record.costs.map((entry) => entry.source).sort()).toEqual([
+      'claude',
+      'cloudflare',
+      'resend',
+      'supabase',
+    ]);
+    expect(record.revenues.map((entry) => entry.source)).toEqual(['admob']);
+    // 為替レートを返さない設定のため、取得元以外の欠測は生じうる。
+    expect(record.incomplete.filter((item) => item.kind === 'source')).toEqual([]);
+  });
+
+  it('AdMob が未設定なら欠測になり、他の取得元の結果は記録される', async () => {
+    const { fetchImpl } = stubAllProviders();
+    const { ADMOB_REFRESH_TOKEN: _omit, ...partial } = FULL_ENV;
+    const sources = [
+      ...buildCostSources(partial, { fetchImpl }),
+      ...buildRevenueSources(partial, { fetchImpl }),
+    ];
+
+    const record = await runDaily(env.RECORDS, sources, '2026-09-08', OPTIONS);
+
+    expect(record?.revenues).toEqual([]);
+    expect(record?.incomplete).toContainEqual(
+      expect.objectContaining({
+        kind: 'source',
+        id: 'admob',
+        reason: expect.stringMatching(/ADMOB_REFRESH_TOKEN/),
+      }),
+    );
+    expect(record?.costs).toHaveLength(4);
   });
 });
 

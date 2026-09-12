@@ -31,4 +31,22 @@ interface __BaseEnv_Env {
   SUPABASE_PAT?: string;
   /** Supabase の組織 slug。 */
   SUPABASE_ORG_SLUG?: string;
+
+  /** AdMob の OAuth クライアント ID。 */
+  ADMOB_CLIENT_ID?: string;
+  /** AdMob の OAuth クライアントシークレット。 */
+  ADMOB_CLIENT_SECRET?: string;
+  /**
+   * AdMob のリフレッシュトークン。スコープは admob.report のみ。
+   *
+   * OAuth 同意画面の公開ステータスを本番にしてから発行する。テスト状態のまま
+   * 発行したものは 7 日で失効する。6 か月使われないトークンも失効し、同一の
+   * Google アカウントと OAuth クライアントの組で 100 件を超えて発行すると、
+   * 最も古いトークンが警告なく無効になる。
+   */
+  ADMOB_REFRESH_TOKEN?: string;
+  /** AdMob のパブリッシャー ID（`pub-` で始まる）。 */
+  ADMOB_PUBLISHER_ID?: string;
+  /** 収益の対象とする sizet のアプリ ID（`ca-app-pub-` で始まる）。 */
+  ADMOB_APP_ID?: string;
 }

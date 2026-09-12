@@ -30,11 +30,12 @@ describe('手動再実行', () => {
 
     expect(response.status).toBe(200);
 
-    // テスト環境では費用収集の認証情報を与えていないため、4 提供元すべてが失敗する。
+    // テスト環境では認証情報を与えていないため、5 提供元すべてが失敗する。
     // 全ソース失敗時はレコードを作らないのが仕様であり、実行された事実は実行記録に残る。
     const run = await readRun(env.RECORDS, '2026-09-07');
     expect(run?.ok).toBe(false);
     expect(run?.sources.map((source) => source.id).sort()).toEqual([
+      'admob',
       'claude',
       'cloudflare',
       'resend',

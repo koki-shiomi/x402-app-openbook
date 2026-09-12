@@ -1,7 +1,13 @@
 import type { CollectionResult, CollectionSource } from '../batch.js';
+import { createAdmobSource } from './admob.js';
 import { createClaudeSource } from './claude.js';
 import { createCloudflareSource } from './cloudflare.js';
-import { loadCostConfig, type CostConfigInput } from './config.js';
+import {
+  loadAdmobConfig,
+  loadCostConfig,
+  type AdmobConfigInput,
+  type CostConfigInput,
+} from './config.js';
 import { createResendSource } from './resend.js';
 import { createSupabaseSource } from './supabase.js';
 
@@ -85,5 +91,30 @@ export function buildCostSources(
         ? undefined
         : () => createSupabaseSource(config.supabase!, options),
     ),
+  ];
+}
+
+/**
+ * 環境から収益の収集ソースを組み立てる。
+ *
+ * 費用とは別の関数にするのは、費用の組み立て関数の責務を変えずに追加するため。
+ *
+ * @param input 環境から読み取った設定値
+ * @param options 依存
+ * @returns AdMob の収集ソース
+ */
+export function buildRevenueSources(
+  input: AdmobConfigInput,
+  options: BuildSourcesOptions = {},
+): CollectionSource[] {
+  const config = loadAdmobConfig(input);
+
+  return [
+    config.admob === undefined
+      ? createUnconfiguredSource(
+          'admob',
+          config.missing[0]?.reason ?? 'AdMob の設定が読み取れませんでした',
+        )
+      : createAdmobSource(config.admob, options),
   ];
 }

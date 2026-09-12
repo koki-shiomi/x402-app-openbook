@@ -85,6 +85,27 @@ describe('当月中の再収集', () => {
     expect(record.totals.revenueJpy).toBe('18.00');
   });
 
+  it('レコードがない当月内の過去日は収集されず、レコードも作成されない', async () => {
+    const amounts = new Map([['2026-09-05', '10.00']]);
+    const base = mutableSource(amounts);
+    const calls: string[] = [];
+    const source: CollectionSource = {
+      ...base,
+      collect(date) {
+        calls.push(date);
+        return base.collect(date);
+      },
+    };
+    await runDaily(env.RECORDS, [source], '2026-09-05', { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
+    calls.length = 0;
+
+    await recollectCurrentMonth(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).toEqual(['2026-09-05']);
+    expect(await getRecord(env.RECORDS, '2026-09-03')).toBeNull();
+    expect(await getRecord(env.RECORDS, '2026-09-07')).toBeNull();
+  });
+
   it('値が変化しない日にはリビジョンが増えない', async () => {
     const source = mutableSource(new Map([['2026-09-05', '10.00']]));
     await runDaily(env.RECORDS, [source], '2026-09-05', OPTIONS);

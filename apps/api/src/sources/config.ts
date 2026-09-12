@@ -82,6 +82,24 @@ export interface SupabaseConfig {
 }
 
 /** 設定が欠けている提供元と、その理由。 */
+/** AdMob の設定値の入力。Worker のシークレットから読み取る。 */
+export interface AdmobConfigInput {
+  ADMOB_CLIENT_ID?: string | undefined;
+  ADMOB_CLIENT_SECRET?: string | undefined;
+  ADMOB_REFRESH_TOKEN?: string | undefined;
+  ADMOB_PUBLISHER_ID?: string | undefined;
+  ADMOB_APP_ID?: string | undefined;
+}
+
+/** AdMob 収益収集の設定。 */
+export interface AdmobConfig {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  publisherId: string;
+  appId: string;
+}
+
 export interface MissingConfig {
   source: string;
   reason: string;
@@ -105,6 +123,61 @@ export interface CostConfig {
  * @param value プラン宣言の設定値
  * @returns プラン名と月額
  */
+/** AdMob の設定の読み取り結果。 */
+export interface AdmobConfigResult {
+  admob?: AdmobConfig;
+  missing: MissingConfig[];
+}
+
+/** AdMob の設定値として必須の項目。 */
+const ADMOB_REQUIRED = [
+  'ADMOB_CLIENT_ID',
+  'ADMOB_CLIENT_SECRET',
+  'ADMOB_REFRESH_TOKEN',
+  'ADMOB_PUBLISHER_ID',
+  'ADMOB_APP_ID',
+] as const;
+
+/**
+ * AdMob の設定値を読み取る。
+ *
+ * 項目の不足と、アプリ ID がパブリッシャー ID に属さない設定誤りは、いずれも
+ * 収集できない理由として `missing` に記録する。設定の誤りを 0 円の収益として
+ * 記録しないため。
+ *
+ * @param input 環境から読み取った設定値
+ * @returns 設定と、読み取れなかった理由
+ */
+export function loadAdmobConfig(input: AdmobConfigInput): AdmobConfigResult {
+  const missingNames = ADMOB_REQUIRED.filter((name) => (input[name] ?? '') === '');
+  if (missingNames.length > 0) {
+    return {
+      missing: [{ source: 'admob', reason: `${missingNames.join(' / ')} が設定されていません` }],
+    };
+  }
+
+  const config: AdmobConfig = {
+    clientId: input.ADMOB_CLIENT_ID!,
+    clientSecret: input.ADMOB_CLIENT_SECRET!,
+    refreshToken: input.ADMOB_REFRESH_TOKEN!,
+    publisherId: input.ADMOB_PUBLISHER_ID!,
+    appId: input.ADMOB_APP_ID!,
+  };
+
+  if (!config.appId.startsWith(`ca-app-${config.publisherId}~`)) {
+    return {
+      missing: [
+        {
+          source: 'admob',
+          reason: `対象アプリ ${config.appId} がパブリッシャー ID ${config.publisherId} に属していません`,
+        },
+      ],
+    };
+  }
+
+  return { admob: config, missing: [] };
+}
+
 function parseResendPlan(value: string): { plan: string; monthlyAmountUsd?: string } {
   const [plan, amount] = value.split(':');
 
