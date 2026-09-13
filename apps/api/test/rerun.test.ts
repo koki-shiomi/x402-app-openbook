@@ -2,7 +2,7 @@ import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { readRun } from '../src/runlog.js';
-import { closeMonth, getRecord } from '../src/storage.js';
+import { getRecord } from '../src/storage.js';
 
 /** wrangler.jsonc の vars で与えたテスト用トークン。 */
 const TOKEN = 'test-token';
@@ -25,7 +25,7 @@ function rerun(date: string, token?: string): Promise<Response> {
 }
 
 describe('手動再実行', () => {
-  it('認証済み要求でクローズされていない月の指定日の収集が実行される', async () => {
+  it('認証済み要求で指定日の収集が実行される', async () => {
     const response = await rerun('2026-09-07', TOKEN);
 
     expect(response.status).toBe(200);
@@ -68,13 +68,11 @@ describe('手動再実行', () => {
     expect(await getRecord(env.RECORDS, '2026-09-07')).toBeNull();
   });
 
-  it('認証済みでもクローズ済み月は拒否される', async () => {
-    await closeMonth(env.RECORDS, '2026-09', { closedAt: '2026-10-06T07:00:00Z' });
+  it('任意の過去日を指定して受け付ける', async () => {
+    const response = await rerun('2026-01-15', TOKEN);
 
-    const response = await rerun('2026-09-07', TOKEN);
-
-    expect(response.status).toBe(409);
-    expect(await getRecord(env.RECORDS, '2026-09-07')).toBeNull();
+    expect(response.status).toBe(200);
+    expect(await readRun(env.RECORDS, '2026-01-15')).not.toBeNull();
   });
 
   it('日付の形式が不正な要求は拒否される', async () => {

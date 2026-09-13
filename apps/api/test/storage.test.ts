@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createRecord, canonicalize, type DailyRecord } from '@openbook/shared';
 
 import {
-  closeMonth,
   getRecord,
   listRecords,
   putRaw,
@@ -99,26 +98,6 @@ describe('訂正リビジョン', () => {
     });
 
     await expect(putRecord(env.RECORDS, withoutReason)).rejects.toThrow(/訂正理由/);
-  });
-});
-
-describe('クローズ済み月への書き込み禁止', () => {
-  it('クローズ済み月への保存は拒否され、既存リビジョンは変化しない', async () => {
-    await putRecord(env.RECORDS, record('2026-09-07', 1, '12.00'));
-    await closeMonth(env.RECORDS, '2026-09', { closedAt: '2026-10-06T07:00:00Z' });
-
-    await expect(putRecord(env.RECORDS, record('2026-09-07', 2, '15.00'))).rejects.toThrow(
-      /クローズ済み/,
-    );
-
-    const latest = await getRecord(env.RECORDS, '2026-09-07');
-    expect(JSON.parse(decoder.decode(latest!)).revision).toBe(1);
-  });
-
-  it('クローズされていない月への保存は成功する', async () => {
-    await closeMonth(env.RECORDS, '2026-08', { closedAt: '2026-09-06T07:00:00Z' });
-
-    await expect(putRecord(env.RECORDS, record('2026-09-07', 1))).resolves.toBeDefined();
   });
 });
 

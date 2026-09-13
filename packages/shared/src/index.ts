@@ -3,12 +3,18 @@ export { convertToJpy, fetchUsdJpyRate, type FetchRateOptions } from './exchange
 export { createRecord, type CreateRecordInput } from './create.js';
 export {
   addDecimals,
+  compareDecimals,
   divideDecimals,
   isDecimalString,
   multiplyDecimals,
   roundHalfUp,
   subtractDecimals,
 } from './decimal.js';
+export {
+  isWithinRevisionThreshold,
+  RECOLLECTION_DAYS,
+  REVISION_THRESHOLD,
+} from './policy.js';
 export { computeTotals, recordIncomplete, type TotalsInput } from './totals.js';
 export { isCalendarDate, validateRecord } from './validate.js';
 export {

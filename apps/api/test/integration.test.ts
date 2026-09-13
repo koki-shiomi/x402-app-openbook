@@ -10,7 +10,6 @@ import {
 } from '@openbook/shared';
 
 import { runDaily, type CollectionSource } from '../src/batch.js';
-import { runMonthlyClose } from '../src/schedule.js';
 import { getRecord, listRecords, putRecord } from '../src/storage.js';
 
 const decoder = new TextDecoder();
@@ -144,8 +143,8 @@ describe('複数取得元の通し実行', () => {
   });
 });
 
-describe('日次実行から月次クローズまで', () => {
-  it('当月中は値の変化でリビジョンが増え、クローズ後は書き込みが拒否される', async () => {
+describe('日次実行と訂正リビジョン', () => {
+  it('値の変化でリビジョンが増え、過去リビジョンは上書きされない', async () => {
     await runDaily(env.RECORDS, [admob('10.00')], '2026-08-31', {
       ...OPTIONS,
       now: '2026-09-01T06:00:00Z',
@@ -155,19 +154,19 @@ describe('日次実行から月次クローズまで', () => {
       now: '2026-09-02T06:00:00Z',
     });
 
-    const beforeClose = JSON.parse(
+    const latest = JSON.parse(
       decoder.decode((await getRecord(env.RECORDS, '2026-08-31'))!),
     ) as DailyRecord;
-    expect(beforeClose.revision).toBe(2);
+    expect(latest.revision).toBe(2);
+    expect(latest.totals.revenueJpy).toBe('14.00');
 
-    await runMonthlyClose(env.RECORDS, [admob('14.00')], '2026-08', {
-      ...OPTIONS,
-      now: '2026-09-06T07:00:00Z',
-    });
+    const first = JSON.parse(
+      decoder.decode((await getRecord(env.RECORDS, '2026-08-31', 1))!),
+    ) as DailyRecord;
+    expect(first.totals.revenueJpy).toBe('10.00');
 
-    await expect(
-      putRecord(env.RECORDS, { ...beforeClose, revision: 9 }),
-    ).rejects.toThrow(/クローズ済み/);
+    // 締切はないが、既存のリビジョンへの書き込みは引き続き拒否される。
+    await expect(putRecord(env.RECORDS, first)).rejects.toThrow(/既に存在/);
   });
 });
 

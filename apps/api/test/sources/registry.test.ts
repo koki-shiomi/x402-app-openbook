@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyRecord } from '@openbook/shared';
 
 import { runDaily } from '../../src/batch.js';
-import { runMonthlyClose } from '../../src/schedule.js';
+import { recollectRecent } from '../../src/schedule.js';
 import { buildCostSources, buildRevenueSources } from '../../src/sources/index.js';
+import { readRun } from '../../src/runlog.js';
 import { getRecord } from '../../src/storage.js';
 
 const decoder = new TextDecoder();
@@ -206,8 +207,8 @@ describe('認証情報が未設定の提供元', () => {
   });
 });
 
-describe('月次クローズでの遡及制限', () => {
-  it('遡及できない提供元の日は既存値が維持され記録に残る', async () => {
+describe('過去日の再収集での遡及制限', () => {
+  it('遡及できない提供元の日は既存値が維持され実行記録に残る', async () => {
     const { fetchImpl } = stubAllProviders();
     const sources = buildCostSources(FULL_ENV, { fetchImpl });
 
@@ -216,21 +217,22 @@ describe('月次クローズでの遡及制限', () => {
       now: '2026-09-01T06:00:00Z',
     });
 
-    const close = await runMonthlyClose(env.RECORDS, sources, '2026-08', {
+    await recollectRecent(env.RECORDS, sources, {
       ...OPTIONS,
       now: '2026-09-06T07:00:00Z',
     });
 
-    // Supabase は前日までしか遡れないため、8 月の全日が再収集対象外になる。
-    expect(close.skipped?.some((entry) => entry.source === 'supabase')).toBe(true);
-
+    const run = await readRun(env.RECORDS, '2026-08-31');
     const record = JSON.parse(
       decoder.decode((await getRecord(env.RECORDS, '2026-08-31'))!),
     ) as DailyRecord;
+
+    // Supabase は前日までしか遡れないため、再収集の対象外になる。
+    expect(run?.skippedSources).toContain('supabase');
     expect(record.costs.some((entry) => entry.source === 'supabase')).toBe(true);
 
     // Cloudflare もサブスクリプションが現在の状態しか返さないため、前日までしか遡れない。
-    expect(close.skipped?.some((entry) => entry.source === 'cloudflare')).toBe(true);
+    expect(run?.skippedSources).toContain('cloudflare');
     expect(record.costs.some((entry) => entry.source === 'cloudflare')).toBe(true);
   });
 });

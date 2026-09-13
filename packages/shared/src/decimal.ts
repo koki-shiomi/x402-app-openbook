@@ -189,3 +189,23 @@ export function divideDecimals(dividend: string, divisor: string, scale: number)
 
   return format(isNegative ? -rounded : rounded, scale);
 }
+
+/**
+ * 10 進小数の大小を比較する。小数桁数が異なる場合は大きいほうに揃える。
+ *
+ * @param a 比較する値
+ * @param b 比較される値
+ * @returns a が大きければ 1、小さければ -1、等しければ 0
+ */
+export function compareDecimals(a: string, b: string): number {
+  const left = parse(a);
+  const right = parse(b);
+  const scale = Math.max(left.scale, right.scale);
+  const difference = rescale(left, scale) - rescale(right, scale);
+
+  if (difference === 0n) {
+    return 0;
+  }
+
+  return difference > 0n ? 1 : -1;
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addDecimals,
+  compareDecimals,
   divideDecimals,
   isDecimalString,
   multiplyDecimals,
@@ -109,5 +110,23 @@ describe('divideDecimals', () => {
     // 1/3 を Number 経由で計算すると 0.3333333333333333 になり、
     // 10 進固定小数点での丸めと桁が揃わない。
     expect(divideDecimals('1', '3', 20)).toBe('0.33333333333333333333');
+  });
+});
+
+describe('compareDecimals', () => {
+  it('大小と等価を符号で返す', () => {
+    expect(compareDecimals('2', '1')).toBe(1);
+    expect(compareDecimals('1', '2')).toBe(-1);
+    expect(compareDecimals('1', '1')).toBe(0);
+  });
+
+  it('小数桁数が異なっても値として比較する', () => {
+    expect(compareDecimals('1.00', '1')).toBe(0);
+    expect(compareDecimals('1.001', '1.00')).toBe(1);
+  });
+
+  it('負の値を扱える', () => {
+    expect(compareDecimals('-1.00', '0.00')).toBe(-1);
+    expect(compareDecimals('-0.00', '0')).toBe(0);
   });
 });

@@ -1,7 +1,7 @@
 import { canonicalize, validateRecord, type DailyRecord } from '@openbook/shared';
 
 /**
- * R2 上の日次レコード・生応答・月次クローズ記録の保存規約。
+ * R2 上の日次レコードと生応答の保存規約。
  *
  * 保存されたバイト列がそのままハッシュ刻印の対象かつ公開物になるため、
  * 取得時に再直列化してはならない。詳細は specs/snapshot-storage/spec.md を参照。
@@ -30,66 +30,6 @@ export function recordKey(date: string, revision: number): string {
  */
 export function rawKey(date: string, source: string): string {
   return `raw/${date}/${source}.json`;
-}
-
-/**
- * 月次クローズ記録のキーを対象月から導出する。
- *
- * @param month 対象月（YYYY-MM 形式）
- * @returns R2 のオブジェクトキー
- */
-export function closeKey(month: string): string {
-  return `close/${month}.json`;
-}
-
-/** 月次クローズの記録内容。 */
-export interface CloseRecord {
-  /** 対象月（YYYY-MM 形式）。 */
-  month: string;
-  /** クローズした時刻（RFC 3339）。 */
-  closedAt: string;
-  /** 対象月の各日の最終リビジョン番号。 */
-  finalRevisions: Record<string, number>;
-  /** 遡及制限により再収集を試みなかった取得元と対象日。 */
-  skipped?: { source: string; dates: string[] }[];
-}
-
-/**
- * 指定の月がクローズ済みかを判定する。
- *
- * @param bucket 保存先の R2 バケット
- * @param month 対象月（YYYY-MM 形式）
- * @returns クローズ済みなら true
- */
-export async function isMonthClosed(bucket: R2Bucket, month: string): Promise<boolean> {
-  return (await bucket.head(closeKey(month))) !== null;
-}
-
-/**
- * 月次クローズを記録する。
- *
- * この記録の存在がクローズ済み判定の根拠となり、以降その月への書き込みは拒否される。
- *
- * @param bucket 保存先の R2 バケット
- * @param month 対象月（YYYY-MM 形式）
- * @param detail クローズの内容
- * @returns 保存した記録
- */
-export async function closeMonth(
-  bucket: R2Bucket,
-  month: string,
-  detail: Omit<CloseRecord, 'month' | 'finalRevisions'> &
-    Partial<Pick<CloseRecord, 'finalRevisions'>>,
-): Promise<CloseRecord> {
-  const body: CloseRecord = {
-    month,
-    finalRevisions: detail.finalRevisions ?? {},
-    closedAt: detail.closedAt,
-    ...(detail.skipped === undefined ? {} : { skipped: detail.skipped }),
-  };
-
-  await bucket.put(closeKey(month), canonicalize(body));
-  return body;
 }
 
 /**
@@ -122,12 +62,12 @@ async function putIfAbsent(bucket: R2Bucket, key: string, body: Uint8Array): Pro
 /**
  * 日次レコードを保存する。
  *
- * 検証を通過し、対象月がクローズされておらず、同じキーが存在しない場合にのみ保存する。
+ * 検証を通過し、同じキーが存在しない場合にのみ保存する。
  *
  * @param bucket 保存先の R2 バケット
  * @param record 保存するレコード
  * @returns 保存したオブジェクトキー
- * @throws {Error} 検証違反、クローズ済み月、キー重複、訂正理由の欠落のいずれか
+ * @throws {Error} 検証違反、キー重複、訂正理由の欠落のいずれか
  */
 export async function putRecord(bucket: R2Bucket, record: DailyRecord): Promise<string> {
   const violations = validateRecord(record);
@@ -137,11 +77,6 @@ export async function putRecord(bucket: R2Bucket, record: DailyRecord): Promise<
 
   if (record.revision > 1 && record.correction === undefined) {
     throw new Error('リビジョン 2 以降には訂正理由が必要です');
-  }
-
-  const month = record.date.slice(0, 7);
-  if (await isMonthClosed(bucket, month)) {
-    throw new Error(`${month} はクローズ済みのため書き込めません`);
   }
 
   const key = recordKey(record.date, record.revision);

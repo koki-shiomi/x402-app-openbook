@@ -10,19 +10,12 @@ import {
 import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import { buildCostSources, buildRevenueSources } from './sources/index.js';
-import {
-  collectWithinReach,
-  previousDay,
-  previousMonth,
-  recollectCurrentMonth,
-  runMonthlyClose,
-} from './schedule.js';
-import { isMonthClosed } from './storage.js';
+import { collectWithinReach, previousDay, recollectRecent } from './schedule.js';
 
 /**
  * 収集ソースを組み立てる。
  *
- * 費用の 4 提供元を登録する。収益の取得元は後続チェンジ（③）で追加する。
+ * 費用の 4 提供元と収益の 1 提供元を登録する。
  * 認証情報が未設定の提供元も登録され、収集時に理由を伴って失敗し欠測になる。
  *
  * @param env Worker のバインディングとシークレット
@@ -62,7 +55,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.get('/health', (c) => c.json({ status: 'ok', schemaVersion: SCHEMA_VERSION }));
 
 /**
- * 手動再実行。クローズされていない月の任意の日を対象に収集を実行する。
+ * 手動再実行。任意の過去日を対象に収集を実行する。
  *
  * 共有シークレットによる Bearer 認証を要求する。利用者は開発者本人 1 名のため、
  * ユーザー管理の仕組みは持たない。
@@ -77,10 +70,6 @@ app.post('/admin/rerun', async (c) => {
 
   if (typeof date !== 'string' || !isCalendarDate(date)) {
     return c.json({ error: 'date は実在する UTC 暦日である必要があります' }, 400);
-  }
-
-  if (await isMonthClosed(c.env.RECORDS, date.slice(0, 7))) {
-    return c.json({ error: 'クローズ済みの月は再実行できません' }, 409);
   }
 
   // 遡及できない取得元は呼び出さず、既存の値を引き継ぐ。
@@ -100,8 +89,7 @@ export default {
   /**
    * Cron Triggers による定期実行。
    *
-   * 日次実行では前日を対象に収集し、あわせて当月内の各日を再収集する。
-   * 月次クローズでは前月の最終リビジョンを確定させ、その月への書き込みを締め切る。
+   * 前日を対象に収集し、あわせて実行時点から一定日数以内の既存レコードを再収集する。
    */
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const now = new Date(controller.scheduledTime).toISOString();
@@ -109,12 +97,7 @@ export default {
 
     const sources = buildSources(env);
 
-    if (controller.cron === '0 7 6 * *') {
-      await runMonthlyClose(env.RECORDS, sources, previousMonth(now), options);
-      return;
-    }
-
     await runDaily(env.RECORDS, sources, previousDay(now), options);
-    await recollectCurrentMonth(env.RECORDS, sources, options);
+    await recollectRecent(env.RECORDS, sources, options);
   },
 } satisfies ExportedHandler<Env>;

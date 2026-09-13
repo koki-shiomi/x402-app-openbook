@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { canonicalize, validateRecord, type DailyRecord } from '@openbook/shared';
 
 import { runDaily } from '../src/batch.js';
-import { recollectCurrentMonth } from '../src/schedule.js';
+import { recollectRecent } from '../src/schedule.js';
 import { buildCostSources, buildRevenueSources } from '../src/sources/index.js';
 import { getRecord } from '../src/storage.js';
 
@@ -109,7 +109,7 @@ describe('既存のレコードへの収益の追加', () => {
     const before = await latest('2026-09-08');
     expect(before.revenues).toEqual([]);
 
-    await recollectCurrentMonth(
+    await recollectRecent(
       env.RECORDS,
       [
         ...buildCostSources(FULL_ENV, { fetchImpl }),

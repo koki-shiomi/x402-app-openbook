@@ -6,13 +6,12 @@ import { validateRecord, type DailyRecord } from '@openbook/shared';
 import { runDaily, type CollectionSource } from '../src/batch.js';
 import {
   collectWithinReach,
-  datesInMonth,
   previousDay,
-  readClose,
-  recollectCurrentMonth,
-  runMonthlyClose,
+  recollectionDates,
+  recollectRecent,
 } from '../src/schedule.js';
-import { getRecord, isMonthClosed, recordKey } from '../src/storage.js';
+import { readRun } from '../src/runlog.js';
+import { getRecord, recordKey } from '../src/storage.js';
 
 const decoder = new TextDecoder();
 
@@ -60,32 +59,47 @@ describe('対象日の算出', () => {
   it('うるう日を扱える', () => {
     expect(previousDay('2028-03-01T06:00:00Z')).toBe('2028-02-29');
   });
-
-  it('月内の全日を列挙する', () => {
-    expect(datesInMonth('2026-02')).toHaveLength(28);
-    expect(datesInMonth('2026-09')[0]).toBe('2026-09-01');
-    expect(datesInMonth('2026-09').at(-1)).toBe('2026-09-30');
-  });
 });
 
-describe('当月中の再収集', () => {
-  it('値が変化した日には訂正リビジョンが追加される', async () => {
+describe('過去日の再収集', () => {
+  it('対象期間内の既存レコードが再収集され、値の変化で訂正リビジョンが追加される', async () => {
     const amounts = new Map([['2026-09-05', '10.00']]);
     const source = mutableSource(amounts);
     await runDaily(env.RECORDS, [source], '2026-09-05', OPTIONS);
 
     amounts.set('2026-09-05', '18.00');
-    await recollectCurrentMonth(env.RECORDS, [source], {
-      ...OPTIONS,
-      now: '2026-09-06T06:00:00Z',
-    });
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
 
     const record = JSON.parse(decoder.decode((await getRecord(env.RECORDS, '2026-09-05'))!));
     expect(record.revision).toBe(2);
     expect(record.totals.revenueJpy).toBe('18.00');
   });
 
-  it('レコードがない当月内の過去日は収集されず、レコードも作成されない', async () => {
+  it('対象期間より前の既存レコードは再収集されない', async () => {
+    // 2026-09-08 の実行では 2026-07-30 までが対象になる。
+    const amounts = new Map([
+      ['2026-07-29', '10.00'],
+      ['2026-07-30', '10.00'],
+    ]);
+    const base = mutableSource(amounts);
+    const calls: string[] = [];
+    const source: CollectionSource = {
+      ...base,
+      collect(date) {
+        calls.push(date);
+        return base.collect(date);
+      },
+    };
+    await runDaily(env.RECORDS, [source], '2026-07-29', { ...OPTIONS, now: '2026-07-30T06:00:00Z' });
+    await runDaily(env.RECORDS, [source], '2026-07-30', { ...OPTIONS, now: '2026-07-31T06:00:00Z' });
+    calls.length = 0;
+
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).toEqual(['2026-07-30']);
+  });
+
+  it('レコードがない対象期間内の日は収集されず、レコードも作成されない', async () => {
     const amounts = new Map([['2026-09-05', '10.00']]);
     const base = mutableSource(amounts);
     const calls: string[] = [];
@@ -99,7 +113,7 @@ describe('当月中の再収集', () => {
     await runDaily(env.RECORDS, [source], '2026-09-05', { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
     calls.length = 0;
 
-    await recollectCurrentMonth(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
 
     expect(calls).toEqual(['2026-09-05']);
     expect(await getRecord(env.RECORDS, '2026-09-03')).toBeNull();
@@ -110,85 +124,21 @@ describe('当月中の再収集', () => {
     const source = mutableSource(new Map([['2026-09-05', '10.00']]));
     await runDaily(env.RECORDS, [source], '2026-09-05', OPTIONS);
 
-    await recollectCurrentMonth(env.RECORDS, [source], {
-      ...OPTIONS,
-      now: '2026-09-06T06:00:00Z',
-    });
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
 
     expect(await env.RECORDS.head(recordKey('2026-09-05', 2))).toBeNull();
   });
-});
 
-describe('月次クローズ', () => {
-  it('レコードがある日が再収集され、クローズ済みとして記録される', async () => {
-    const amounts = new Map([['2026-08-31', '10.00']]);
-    const source = mutableSource(amounts);
-    await runDaily(env.RECORDS, [source], '2026-08-31', {
-      ...OPTIONS,
-      now: '2026-09-01T06:00:00Z',
-    });
+  it('翌月初の実行で前月の全日が対象に入る', () => {
+    const dates = recollectionDates('2026-10-01T06:00:00Z');
+    const september = Array.from(
+      { length: 30 },
+      (_unused, index) => `2026-09-${String(index + 1).padStart(2, '0')}`,
+    );
 
-    amounts.set('2026-08-31', '12.00');
-    await runMonthlyClose(env.RECORDS, [source], '2026-08', {
-      ...OPTIONS,
-      now: '2026-09-06T07:00:00Z',
-    });
-
-    expect(await isMonthClosed(env.RECORDS, '2026-08')).toBe(true);
-
-    const close = await readClose(env.RECORDS, '2026-08');
-    expect(close?.finalRevisions['2026-08-31']).toBe(2);
-  });
-
-  it('レコードがない日は収集されず、レコードは作成されない', async () => {
-    const base = mutableSource(new Map([['2026-08-31', '10.00']]));
-    const calls: string[] = [];
-    const source: CollectionSource = {
-      ...base,
-      collect(date) {
-        calls.push(date);
-        return base.collect(date);
-      },
-    };
-    await runDaily(env.RECORDS, [source], '2026-08-31', {
-      ...OPTIONS,
-      now: '2026-09-01T06:00:00Z',
-    });
-    calls.length = 0;
-
-    await runMonthlyClose(env.RECORDS, [source], '2026-08', {
-      ...OPTIONS,
-      now: '2026-09-06T07:00:00Z',
-    });
-
-    expect(calls).toEqual(['2026-08-31']);
-    expect(await getRecord(env.RECORDS, '2026-08-01')).toBeNull();
-    const close = await readClose(env.RECORDS, '2026-08');
-    expect(Object.keys(close?.finalRevisions ?? {})).toEqual(['2026-08-31']);
-  });
-
-  it('遡及できない取得元は再収集されず、その事実が記録に残る', async () => {
-    const amounts = new Map([['2026-08-31', '10.00']]);
-    const limited: CollectionSource = {
-      ...mutableSource(amounts),
-      canCollect: () => false,
-    };
-    await runDaily(env.RECORDS, [limited], '2026-08-31', {
-      ...OPTIONS,
-      now: '2026-09-01T06:00:00Z',
-    });
-
-    amounts.set('2026-08-31', '99.00');
-    await runMonthlyClose(env.RECORDS, [limited], '2026-08', {
-      ...OPTIONS,
-      now: '2026-09-06T07:00:00Z',
-    });
-
-    const record = JSON.parse(decoder.decode((await getRecord(env.RECORDS, '2026-08-31'))!));
-    expect(record.totals.revenueJpy).toBe('10.00');
-
-    const close = await readClose(env.RECORDS, '2026-08');
-    expect(close?.skipped).toEqual([{ source: 'admob', dates: ['2026-08-31'] }]);
+    expect(dates).toEqual(expect.arrayContaining(september));
+    expect(dates).toHaveLength(40);
+    expect(dates.at(-1)).toBe('2026-09-30');
   });
 });
 
@@ -269,7 +219,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
 
     amounts.set('2026-09-05', '20.00');
     limited.calls.length = 0;
-    await recollectCurrentMonth(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
+    await recollectRecent(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
 
     const record = await latest('2026-09-05');
     expect(record.revision).toBe(2);
@@ -281,7 +231,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     expect(validateRecord(record)).toEqual([]);
   });
 
-  it('月次クローズで、期間外のソースは呼び出されず既存のエントリが引き継がれる', async () => {
+  it('前月に属する日の再収集でも、期間外のソースは呼び出されず既存のエントリが引き継がれる', async () => {
     const amounts = new Map([['2026-08-31', '10.00']]);
     const limited = reachLimitedSource('2026-09-02T00:00:00Z');
     const sources = [mutableSource(amounts), limited.source];
@@ -289,7 +239,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
 
     amounts.set('2026-08-31', '20.00');
     limited.calls.length = 0;
-    await runMonthlyClose(env.RECORDS, sources, '2026-08', rateOptionsAt('2026-09-06T07:00:00Z'));
+    await recollectRecent(env.RECORDS, sources, rateOptionsAt('2026-09-06T07:00:00Z'));
 
     const record = await latest('2026-08-31');
     expect(limited.calls).toEqual([]);
@@ -327,7 +277,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     await runDaily(env.RECORDS, sources, '2026-09-05', rateOptionsAt('2026-09-06T06:00:00Z'));
 
     amounts.set('2026-09-05', '20.00');
-    await recollectCurrentMonth(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
+    await recollectRecent(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
 
     const record = await latest('2026-09-05');
     expect(record.revision).toBe(2);
@@ -344,7 +294,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     await runDaily(env.RECORDS, sources, '2026-09-05', rateOptionsAt('2026-09-06T06:00:00Z'));
 
     amounts.set('2026-09-05', '20.00');
-    await recollectCurrentMonth(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
+    await recollectRecent(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
 
     const record = await latest('2026-09-05');
     expect(record.revision).toBe(2);
@@ -358,7 +308,7 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     // 期間外のソースを含まずに作成されたレコード（本チェンジより前のレコードを模す）。
     await runDaily(env.RECORDS, [mutableSource(amounts)], '2026-09-05', rateOptionsAt('2026-09-06T06:00:00Z'));
 
-    await recollectCurrentMonth(
+    await recollectRecent(
       env.RECORDS,
       [mutableSource(amounts), limited.source],
       rateOptionsAt('2026-09-08T06:00:00Z'),
@@ -388,6 +338,35 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     expect(result.record?.incomplete).toEqual([
       { kind: 'source', id: 'limited', reason: expect.stringMatching(/遡及可能期間外/) },
     ]);
+  });
+
+  it('日次実行で、呼び出さなかった取得元が実行記録に残る', async () => {
+    const amounts = new Map([['2026-09-05', '10.00']]);
+    const limited = reachLimitedSource('2026-09-07T00:00:00Z');
+    const sources = [mutableSource(amounts), limited.source];
+    await runDaily(env.RECORDS, sources, '2026-09-05', rateOptionsAt('2026-09-06T06:00:00Z'));
+
+    amounts.set('2026-09-05', '20.00');
+    await recollectRecent(env.RECORDS, sources, rateOptionsAt('2026-09-08T06:00:00Z'));
+
+    expect((await readRun(env.RECORDS, '2026-09-05'))?.skippedSources).toEqual(['limited']);
+  });
+
+  it('手動再実行でも、呼び出さなかった取得元が実行記録に残る', async () => {
+    const amounts = new Map([['2026-09-05', '10.00']]);
+    const limited = reachLimitedSource('2026-09-07T00:00:00Z');
+    const sources = [mutableSource(amounts), limited.source];
+    await runDaily(env.RECORDS, sources, '2026-09-05', rateOptionsAt('2026-09-06T06:00:00Z'));
+
+    amounts.set('2026-09-05', '20.00');
+    await collectWithinReach(
+      env.RECORDS,
+      sources,
+      '2026-09-05',
+      rateOptionsAt('2026-09-08T06:00:00Z'),
+    );
+
+    expect((await readRun(env.RECORDS, '2026-09-05'))?.skippedSources).toEqual(['limited']);
   });
 
   it('すべてのソースが期間外の日は収集せず、既存のリビジョンを維持する', async () => {

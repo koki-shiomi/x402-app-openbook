@@ -2,20 +2,23 @@ import {
   canonicalize,
   convertToJpy,
   createRecord,
+  isWithinRevisionThreshold,
+  REVISION_THRESHOLD,
+  subtractDecimals,
   type DailyRecord,
   type Entry,
   type ExchangeRate,
   type IncompleteItem,
 } from '@openbook/shared';
 
-import { writeRun, type SourceResult } from './runlog.js';
-import { getRecord, isMonthClosed, putRaw, putRecord } from './storage.js';
+import { writeRun, type DeferredRevision, type SourceResult } from './runlog.js';
+import { getRecord, putRaw, putRecord } from './storage.js';
 
 /**
  * 日次バッチの実行。
  *
- * 収集ソースそのものは後続チェンジで追加されるため、ここではソースの登録・実行・
- * 記録・再実行の仕組みだけを定める。詳細は specs/daily-batch/spec.md を参照。
+ * ソースの登録・実行・記録と、訂正リビジョンを追加するかの判定を定める。
+ * 詳細は specs/daily-batch/spec.md を参照。
  */
 
 /** 収集ソースが返す内容。 */
@@ -38,7 +41,7 @@ export interface CollectionSource {
   collect(date: string): Promise<CollectionResult> | CollectionResult;
   /**
    * 対象日を遡って取得できるか。
-   * 取得元ごとに遡及可能な期間が異なるため、月次クローズの再収集可否を判定する。
+   * 取得元ごとに遡及可能な期間が異なるため、過去日の再収集の可否を判定する。
    */
   canCollect?(date: string, now: string): boolean;
 }
@@ -110,24 +113,117 @@ async function readLatest(bucket: R2Bucket, date: string): Promise<DailyRecord |
 }
 
 /**
- * 生成時刻・訂正情報・為替レートの取得時刻を除いた内容が既存リビジョンと同一かを判定する。
+ * 実行のたびに変わる項目（生成時刻・リビジョン・訂正情報・為替レートの取得時刻）を
+ * 取り除いた内容を返す。
  *
- * 実行のたびに変わる項目を比較対象から外さないと、内容が変わっていなくても
- * 差分ありと判定され、リビジョンが際限なく増える。レート値と公表日は比較対象に残す。
+ * これらを比較対象に含めると、内容が変わっていなくても差分ありと判定され、
+ * リビジョンが際限なく増える。レート値と公表日は比較対象に残す。
+ *
+ * @param record 対象のレコード
+ * @returns 比較に用いる内容
+ */
+function withoutVolatile(record: DailyRecord): Record<string, unknown> {
+  const { generatedAt: _generatedAt, revision: _revision, correction: _correction, ...rest } = record;
+  const exchangeRates = rest.exchangeRates.map(({ fetchedAt: _fetchedAt, ...rate }) => rate);
+  return { ...rest, exchangeRates };
+}
+
+/**
+ * 正準 JSON のバイト列として同一かを判定する。
+ *
+ * @param a 比較対象
+ * @param b 比較対象
+ * @returns 同一なら true
+ */
+function isSameCanonical(a: unknown, b: unknown): boolean {
+  const decoder = new TextDecoder();
+  return decoder.decode(canonicalize(a)) === decoder.decode(canonicalize(b));
+}
+
+/**
+ * 比較対象の内容が既存リビジョンと同一かを判定する。
  *
  * @param a 比較対象のレコード
  * @param b 比較対象のレコード
  * @returns 内容が同一なら true
  */
 function hasSameContent(a: DailyRecord, b: DailyRecord): boolean {
-  const strip = (record: DailyRecord): unknown => {
-    const { generatedAt: _generatedAt, revision: _revision, correction: _correction, ...rest } = record;
-    const exchangeRates = rest.exchangeRates.map(({ fetchedAt: _fetchedAt, ...rate }) => rate);
-    return { ...rest, exchangeRates };
-  };
+  return isSameCanonical(withoutVolatile(a), withoutVolatile(b));
+}
 
-  const decoder = new TextDecoder();
-  return decoder.decode(canonicalize(strip(a))) === decoder.decode(canonicalize(strip(b)));
+/**
+ * エントリから金額（原金額と換算後の金額）を取り除く。
+ *
+ * @param entry 対象のエントリ
+ * @returns 金額を除いたエントリの内容
+ */
+function withoutAmount(entry: Entry): Omit<Entry, 'amount' | 'amountJpy'> {
+  const { amount: _amount, amountJpy: _amountJpy, ...rest } = entry;
+  return rest;
+}
+
+/**
+ * 金額を除いた内容に違いがあるかを判定する。
+ *
+ * 欠測の有無・エントリの増減・算出根拠・適用レートの変化は、金額が動かなくても
+ * 内容が変わったことを意味するため、閾値の判定にかけず必ず訂正リビジョンを追加する。
+ * 判定の対象から外すのはエントリの金額と、そこから算出される集計値のみ。
+ *
+ * @param a 比較対象のレコード
+ * @param b 比較対象のレコード
+ * @returns 金額以外に違いがあれば true
+ */
+export function differsBeyondAmounts(a: DailyRecord, b: DailyRecord): boolean {
+  const withoutAmounts = (record: DailyRecord): unknown => ({
+    ...withoutVolatile(record),
+    costs: record.costs.map(withoutAmount),
+    revenues: record.revenues.map(withoutAmount),
+    totals: { incomplete: record.totals.incomplete },
+  });
+
+  return !isSameCanonical(withoutAmounts(a), withoutAmounts(b));
+}
+
+/** 閾値の判定対象とする集計値。 */
+const THRESHOLD_FIELDS = ['revenueJpy', 'costJpy'] as const;
+
+/**
+ * 閾値以下のため訂正リビジョンを見送るかを判定する。
+ *
+ * 金額以外に違いがある場合は、変化の大きさに関わらず見送らない。金額の違いのみの
+ * 場合に、収益合計と費用合計の双方が閾値に収まるときだけ見送る。
+ *
+ * @param existing 既存の最新リビジョン
+ * @param candidate 今回生成したレコード
+ * @returns 見送る場合はその判断の内容。見送らない場合は undefined
+ */
+function deferRevision(
+  existing: DailyRecord,
+  candidate: DailyRecord,
+): DeferredRevision | undefined {
+  if (differsBeyondAmounts(existing, candidate)) {
+    return undefined;
+  }
+
+  const isWithinThreshold = THRESHOLD_FIELDS.every((field) =>
+    isWithinRevisionThreshold(existing.totals[field], candidate.totals[field]),
+  );
+  if (!isWithinThreshold) {
+    return undefined;
+  }
+
+  return {
+    changes: THRESHOLD_FIELDS.map((field) => ({
+      field,
+      existing: existing.totals[field],
+      next: candidate.totals[field],
+      difference: subtractDecimals(candidate.totals[field], existing.totals[field]),
+    })),
+    threshold: {
+      maxDifference: REVISION_THRESHOLD.maxDifference,
+      maxRatio: REVISION_THRESHOLD.maxRatio,
+    },
+  };
 }
 
 /** 遡及可能期間外で、既存のレコードにも値がない収集ソースの欠測理由。 */
@@ -204,8 +300,7 @@ function retainFromExisting(
  * @param date 対象日（YYYY-MM-DD 形式）
  * @param options 実行の依存
  * @param retainedSourceIds 呼び出さずに既存の値を引き継ぐ収集ソースの識別子
- * @returns 保存したレコード。保存しなかった場合は null
- * @throws {Error} 対象月がクローズ済みの場合
+ * @returns 保存したレコード。保存しなかった場合は既存の最新リビジョン、レコードがなければ null
  */
 export async function runDaily(
   bucket: R2Bucket,
@@ -214,13 +309,12 @@ export async function runDaily(
   options: RunOptions,
   retainedSourceIds: readonly string[] = [],
 ): Promise<DailyRecord | null> {
-  const month = date.slice(0, 7);
-  if (await isMonthClosed(bucket, month)) {
-    throw new Error(`${month} はクローズ済みのため実行できません`);
-  }
-
   const startedAt = options.now;
   const collected = await collectAll(sources, date, bucket);
+
+  // 遡及可能期間外で呼び出さなかった取得元は、公開データに現れないため実行記録に残す。
+  const skippedSources =
+    retainedSourceIds.length === 0 ? {} : { skippedSources: [...retainedSourceIds] };
 
   // 収集ソースが 1 件以上あって全滅した場合のみ、レコードを作らない。
   const allFailed = sources.length > 0 && collected.results.every((result) => !result.ok);
@@ -231,6 +325,7 @@ export async function runDaily(
       finishedAt: options.now,
       ok: false,
       sources: collected.results,
+      ...skippedSources,
     });
     return null;
   }
@@ -271,17 +366,24 @@ export async function runDaily(
       : { correction: { supersedes: existing.revision, reason: '再収集による更新' } }),
   });
 
-  // 内容が変わっていなければリビジョンを増やさない。
-  if (existing !== null && hasSameContent(existing, candidate)) {
-    await writeRun(bucket, {
-      date,
-      startedAt,
-      finishedAt: options.now,
-      ok: true,
-      sources: collected.results,
-      revision: existing.revision,
-    });
-    return existing;
+  // 内容が変わっていない場合と、金額の変化が閾値に収まる場合はリビジョンを増やさない。
+  if (existing !== null) {
+    const isUnchanged = hasSameContent(existing, candidate);
+    const deferred = isUnchanged ? undefined : deferRevision(existing, candidate);
+
+    if (isUnchanged || deferred !== undefined) {
+      await writeRun(bucket, {
+        date,
+        startedAt,
+        finishedAt: options.now,
+        ok: true,
+        sources: collected.results,
+        revision: existing.revision,
+        ...skippedSources,
+        ...(deferred === undefined ? {} : { deferred }),
+      });
+      return existing;
+    }
   }
 
   await putRecord(bucket, candidate);
@@ -292,6 +394,7 @@ export async function runDaily(
     ok: true,
     sources: collected.results,
     revision,
+    ...skippedSources,
   });
 
   return candidate;
