@@ -6,7 +6,8 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "deploy": "pnpm --filter @openbook/api deploy",
-    "check:abi": "node scripts/check-abi.mjs"
+    "check:abi": "node scripts/check-abi.mjs",
+    "check:crons": "node scripts/check-crons.mjs"
   },
   "engines": {
     "node": ">=20",

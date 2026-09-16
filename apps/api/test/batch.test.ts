@@ -19,6 +19,7 @@ function costSource(id: string, amount: string, revisable = false): CollectionSo
   return {
     id,
     revisable,
+    requestsPerCollection: 0,
     async collect(date) {
       const entry: Entry = {
         source: id,
@@ -39,6 +40,7 @@ function failingSource(id: string): CollectionSource {
   return {
     id,
     revisable: false,
+    requestsPerCollection: 0,
     collect() {
       throw new Error('HTTP 503');
     },
@@ -204,6 +206,7 @@ describe('訂正リビジョンを追加する条件', () => {
   const usdSource: CollectionSource = {
     id: 'claude',
     revisable: false,
+    requestsPerCollection: 0,
     async collect() {
       const entry: Entry = {
         source: 'claude',
@@ -244,14 +247,27 @@ describe('訂正リビジョンを追加する条件', () => {
     expect(await env.RECORDS.head(recordKey('2026-09-07', 2))).toBeNull();
   });
 
-  it('為替レートの値が変わった再実行では訂正リビジョンが追加される', async () => {
+  it('記録済みのレートは再実行で変わらず、訂正リビジョンも増えない', async () => {
     await runDaily(env.RECORDS, [usdSource], '2026-09-07', optionsAt('2026-09-08T06:00:00Z'));
+
+    // 提供元が別の値を返しても、記録済みのレートを再利用するため内容は変わらない。
     await runDaily(
       env.RECORDS,
       [usdSource],
       '2026-09-07',
       optionsAt('2026-09-09T06:00:00Z', '148.00'),
     );
+
+    expect(await env.RECORDS.head(recordKey('2026-09-07', 2))).toBeNull();
+  });
+
+  it('レートを取得できなかった日は、後から取得できると訂正リビジョンが追加される', async () => {
+    await runDaily(env.RECORDS, [usdSource], '2026-09-07', {
+      now: '2026-09-08T06:00:00Z',
+      fetchRate: async () => undefined,
+    });
+
+    await runDaily(env.RECORDS, [usdSource], '2026-09-07', optionsAt('2026-09-09T06:00:00Z'));
 
     expect(await env.RECORDS.head(recordKey('2026-09-07', 2))).not.toBeNull();
   });

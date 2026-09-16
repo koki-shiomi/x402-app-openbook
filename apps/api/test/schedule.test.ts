@@ -20,6 +20,7 @@ function mutableSource(amounts: Map<string, string>): CollectionSource {
   return {
     id: 'admob',
     revisable: true,
+    requestsPerCollection: 0,
     collect(date) {
       const amount = amounts.get(date) ?? '0.00';
       return {
@@ -68,7 +69,7 @@ describe('過去日の再収集', () => {
     await runDaily(env.RECORDS, [source], '2026-09-05', OPTIONS);
 
     amounts.set('2026-09-05', '18.00');
-    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-07T06:00:00Z' });
 
     const record = JSON.parse(decoder.decode((await getRecord(env.RECORDS, '2026-09-05'))!));
     expect(record.revision).toBe(2);
@@ -124,13 +125,20 @@ describe('過去日の再収集', () => {
     const source = mutableSource(new Map([['2026-09-05', '10.00']]));
     await runDaily(env.RECORDS, [source], '2026-09-05', OPTIONS);
 
-    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
+    const outcome = await recollectRecent(env.RECORDS, [source], {
+      ...OPTIONS,
+      now: '2026-09-07T06:00:00Z',
+    });
 
+    // 再収集の対象にはなったが、値が変わらないためリビジョンは増えない。
+    expect(outcome.processed).toContain('2026-09-05');
     expect(await env.RECORDS.head(recordKey('2026-09-05', 2))).toBeNull();
   });
 
   it('翌月初の実行で前月の全日が対象に入る', () => {
-    const dates = recollectionDates('2026-10-01T06:00:00Z');
+    // 前日は最初の定期実行が収集し、それより前の日を再収集が担当する。
+    const now = '2026-10-01T06:00:00Z';
+    const dates = [previousDay(now), ...recollectionDates(now)];
     const september = Array.from(
       { length: 30 },
       (_unused, index) => `2026-09-${String(index + 1).padStart(2, '0')}`,
@@ -138,7 +146,9 @@ describe('過去日の再収集', () => {
 
     expect(dates).toEqual(expect.arrayContaining(september));
     expect(dates).toHaveLength(40);
-    expect(dates.at(-1)).toBe('2026-09-30');
+    // 前日は先頭に置いた。再収集が担当するのは 2 日前までである。
+    expect(dates[0]).toBe('2026-09-30');
+    expect(dates.at(-1)).toBe('2026-09-29');
   });
 });
 
@@ -155,6 +165,7 @@ function reachLimitedSource(reachableUntil: string, fail = false) {
   const source: CollectionSource = {
     id: 'limited',
     revisable: false,
+    requestsPerCollection: 0,
     canCollect: (_date, now) => now < reachableUntil,
     collect(date) {
       calls.push(date);

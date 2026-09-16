@@ -29,6 +29,7 @@ const WITH_RATE = { now: '2026-09-08T06:00:00Z', fetchRate: async () => RATE };
 const usdCost: CollectionSource = {
   id: 'claude',
   revisable: false,
+  requestsPerCollection: 0,
   collect: () => ({
     costs: [
       {
@@ -48,6 +49,7 @@ const usdCost: CollectionSource = {
 const freeTier: CollectionSource = {
   id: 'supabase',
   revisable: false,
+  requestsPerCollection: 0,
   collect: () => ({
     costs: [
       {
@@ -70,6 +72,7 @@ function admob(amount: string): CollectionSource {
   return {
     id: 'admob',
     revisable: true,
+    requestsPerCollection: 0,
     collect: () => ({
       costs: [],
       revenues: [

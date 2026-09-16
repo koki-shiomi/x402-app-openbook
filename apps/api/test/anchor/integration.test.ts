@@ -2,6 +2,7 @@ import { SELF, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import worker from '../../src/index.js';
+import { ANCHOR_TRIGGER } from '../../src/triggers.js';
 import { readAnchorRuns } from '../../src/anchor/store.js';
 import { recordKey } from '../../src/storage.js';
 
@@ -13,7 +14,7 @@ beforeEach(async () => {
   await Promise.all(listed.objects.map((object) => env.RECORDS.delete(object.key)));
 });
 
-describe('収集の後段での刻印', () => {
+describe('刻印の契機', () => {
   it('手動再実行の後に刻印が 1 回行われ、応答に結果が含まれる', async () => {
     const response = await SELF.fetch('https://example.com/admin/rerun', {
       method: 'POST',
@@ -52,10 +53,10 @@ describe('収集の後段での刻印', () => {
     expect(await env.RECORDS.get(recordKey('2026-09-15', 1))).not.toBeNull();
   });
 
-  it('日次の定期実行の後に刻印が 1 回行われる', async () => {
+  it('刻印の定期実行で刻印が 1 回行われる', async () => {
     const controller = {
-      cron: '0 6 * * *',
-      scheduledTime: new Date('2026-09-16T06:00:00Z').getTime(),
+      cron: ANCHOR_TRIGGER,
+      scheduledTime: new Date('2026-09-16T07:00:00Z').getTime(),
       noRetry() {},
     } as ScheduledController;
 

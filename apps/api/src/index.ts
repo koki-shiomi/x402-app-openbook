@@ -11,9 +11,16 @@ import { runAnchoring } from './anchor/index.js';
 import { listAvailableRecords } from './api/listing.js';
 import { paidRecordMiddleware, serveRecord } from './api/paid-record.js';
 import { isAuthorized } from './auth.js';
-import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
-import { buildCostSources, buildRevenueSources } from './sources/index.js';
-import { collectWithinReach, previousDay, recollectRecent } from './schedule.js';
+import type { CollectionSource, RunOptions } from './batch.js';
+import { RequestBudget } from './budget.js';
+import { writeCollectionRun } from './runlog.js';
+import {
+  buildCostSources,
+  buildRevenueSources,
+  type BuildSourcesOptions,
+} from './sources/index.js';
+import { collectWithinReach, runCollection } from './schedule.js';
+import { ANCHOR_TRIGGER, findCollectionTrigger, REQUEST_BUDGET } from './triggers.js';
 
 /**
  * 収集ソースを組み立てる。
@@ -24,8 +31,8 @@ import { collectWithinReach, previousDay, recollectRecent } from './schedule.js'
  * @param env Worker のバインディングとシークレット
  * @returns 収集ソースの配列
  */
-function buildSources(env: Env): CollectionSource[] {
-  return [...buildCostSources(env), ...buildRevenueSources(env)];
+function buildSources(env: Env, options: BuildSourcesOptions = {}): CollectionSource[] {
+  return [...buildCostSources(env, options), ...buildRevenueSources(env, options)];
 }
 
 /**
@@ -116,17 +123,38 @@ export default {
   /**
    * Cron Triggers による定期実行。
    *
-   * 前日を対象に収集し、あわせて実行時点から一定日数以内の既存レコードを再収集する。
-   * 収集を終えたら、最新リビジョンが未刻印の日をまとめて刻印する。
+   * 1 回の実行で使える外部への問い合わせ回数に上限があるため、収集は複数の定期実行へ
+   * 分けて担当させ、刻印はさらに別の定期実行で行う。起動した指定から担当を引く。
+   * 詳細は specs/daily-batch/spec.md と design.md の決定 1・2 を参照。
    */
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const now = new Date(controller.scheduledTime).toISOString();
-    const options = buildRunOptions(now);
 
-    const sources = buildSources(env);
+    if (controller.cron === ANCHOR_TRIGGER) {
+      await runAnchoring(env.RECORDS, env, { now });
+      return;
+    }
 
-    await runDaily(env.RECORDS, sources, previousDay(now), options);
-    await recollectRecent(env.RECORDS, sources, options);
-    await runAnchoring(env.RECORDS, env, { now });
+    const trigger = findCollectionTrigger(controller.cron);
+    if (trigger === undefined) {
+      // 設定ファイルと実装の対応が崩れたことを検知できるよう、記録だけ残す。
+      await writeCollectionRun(env.RECORDS, {
+        startedAt: now,
+        finishedAt: now,
+        trigger: controller.cron,
+        dates: [],
+        updated: [],
+        requestsUsed: 0,
+        requestBudget: REQUEST_BUDGET,
+        reason: '担当する定期実行として登録されていません',
+      });
+      return;
+    }
+
+    const budget = new RequestBudget(REQUEST_BUDGET);
+    const options = { ...buildRunOptions(now), budget };
+    const sources = buildSources(env, { fetchImpl: budget.wrap(fetch) });
+
+    await runCollection(env.RECORDS, sources, options, trigger);
   },
 } satisfies ExportedHandler<Env>;

@@ -11,6 +11,7 @@ import {
   type IncompleteItem,
 } from '@openbook/shared';
 
+import { isResourceLimitError } from './budget.js';
 import { writeRun, type DeferredRevision, type SourceResult } from './runlog.js';
 import { getRecord, putRaw, putRecord } from './storage.js';
 
@@ -37,6 +38,20 @@ export interface CollectionSource {
   id: string;
   /** 提供元が後から値を改訂しうるか。 */
   revisable: boolean;
+  /**
+   * 1 日分の収集で行う外部への問い合わせ回数の見積もり。
+   *
+   * 1 回の実行で使える問い合わせ回数には上限があり、担当範囲の配分がその上限に
+   * 収まるかをテストで検証するために用いる。あくまで見積もりであり、実際の回数は
+   * 実行時に数える（design.md の決定 5・6 を参照）。
+   */
+  requestsPerCollection: number;
+  /**
+   * 実行ごとに 1 回だけ行う問い合わせの回数。省略時は 0。
+   *
+   * 認証トークンの取得のように、同じ実行の中で使い回せるものを表す。
+   */
+  requestsPerRun?: number;
   /** 対象日のエントリを取得する。 */
   collect(date: string): Promise<CollectionResult> | CollectionResult;
   /**
@@ -88,6 +103,13 @@ async function collectAll(
       }
       results.push({ id: source.id, ok: true });
     } catch (error) {
+      // 自分の実行環境が処理しきれなかったことは、提供元から取得できなかったことと
+      // 意味が異なる。欠測として記録すると誤った事実が公開されるため、呼び出し元へ
+      // 委ねて当該日のレコードを作らせない。
+      if (isResourceLimitError(error)) {
+        throw error;
+      }
+
       const reason = error instanceof Error ? error.message : String(error);
       // 欠測は 0 円のエントリにせず、取得できなかった事実として残す。
       incomplete.push({ kind: 'source', id: source.id, reason });
@@ -341,6 +363,12 @@ export async function runDaily(
   const needsRate = [...costs, ...revenues].some((entry) => entry.currency !== 'JPY');
 
   if (needsRate) {
+    // 適用するレートは対象日から決定的に定まるため、記録済みなら取得し直さない。
+    // 問い合わせ回数を減らすとともに、実行時刻で選択が変わらないことがより確実になる。
+    rate = existing?.exchangeRates.find((recorded) => recorded.pair === 'USD/JPY');
+  }
+
+  if (needsRate && rate === undefined) {
     rate = await options.fetchRate(date);
     if (rate === undefined) {
       incomplete.push({

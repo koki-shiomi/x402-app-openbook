@@ -61,6 +61,8 @@ export function createResendSource(
   return {
     id: 'resend',
     revisable: false,
+    // 送信数の指標を 1 回取得する。
+    requestsPerCollection: 1,
 
     canCollect(date: string, now: string): boolean {
       const limit = new Date(now);

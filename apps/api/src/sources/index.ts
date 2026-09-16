@@ -36,6 +36,8 @@ function createUnconfiguredSource(id: string, reason: string): CollectionSource 
   return {
     id,
     revisable: false,
+    // 設定がないため外部へは問い合わせず、必ず失敗する。
+    requestsPerCollection: 0,
     collect(): CollectionResult {
       throw new Error(reason);
     },

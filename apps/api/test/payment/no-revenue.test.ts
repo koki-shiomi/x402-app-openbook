@@ -31,6 +31,7 @@ describe('x402 の支払いは収益に含めない', () => {
     const source: CollectionSource = {
       id: 'claude',
       revisable: false,
+      requestsPerCollection: 0,
       collect: () => ({
         costs: [
           {

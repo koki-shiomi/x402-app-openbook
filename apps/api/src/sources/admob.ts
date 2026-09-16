@@ -172,6 +172,10 @@ export function createAdmobSource(
   return {
     id: 'admob',
     revisable: true,
+    // 収益レポートを 1 回取得する。
+    requestsPerCollection: 1,
+    // アクセストークンは実行の中で使い回すため、実行ごとに 1 回だけ取得する。
+    requestsPerRun: 1,
 
     async collect(date: string): Promise<CollectionResult> {
       const account = await callApi<PublisherAccount>('');

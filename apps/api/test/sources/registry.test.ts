@@ -106,6 +106,31 @@ describe('収集ソースの登録', () => {
     ]);
   });
 
+  it('すべての収集ソースが問い合わせ回数を宣言する', () => {
+    const { fetchImpl } = stubAllProviders();
+    const sources = [
+      ...buildCostSources(FULL_ENV, { fetchImpl }),
+      ...buildRevenueSources(FULL_ENV, { fetchImpl }),
+    ];
+
+    for (const source of sources) {
+      expect(
+        Number.isInteger(source.requestsPerCollection) && source.requestsPerCollection >= 0,
+      ).toBe(true);
+    }
+  });
+
+  it('設定が欠けている提供元は問い合わせを行わないと宣言する', () => {
+    const { fetchImpl } = stubAllProviders();
+    const { CLOUDFLARE_BILLING_TOKEN: _omit, ...partial } = FULL_ENV;
+
+    const cloudflare = buildCostSources(partial, { fetchImpl }).find(
+      (source) => source.id === 'cloudflare',
+    );
+
+    expect(cloudflare?.requestsPerCollection).toBe(0);
+  });
+
   it('日次実行で 4 提供元すべてが呼び出される', async () => {
     const { fetchImpl } = stubAllProviders();
     const sources = buildCostSources(FULL_ENV, { fetchImpl });

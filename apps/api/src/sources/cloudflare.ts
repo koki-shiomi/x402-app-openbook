@@ -242,6 +242,8 @@ export function createCloudflareSource(
   return {
     id: 'cloudflare',
     revisable: false,
+    // サブスクリプション・従量課金・請求実績の 3 つを取得する。
+    requestsPerCollection: 3,
 
     canCollect(date: string, now: string): boolean {
       const limit = new Date(now);

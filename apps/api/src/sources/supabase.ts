@@ -76,6 +76,8 @@ export function createSupabaseSource(
   return {
     id: 'supabase',
     revisable: false,
+    // 組織とプロジェクト一覧に加え、対象プロジェクト 1 件のアドオンを取得する。
+    requestsPerCollection: 3,
 
     canCollect(date: string, now: string): boolean {
       const limit = new Date(now);

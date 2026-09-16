@@ -93,6 +93,8 @@ export function createClaudeSource(
   return {
     id: 'claude',
     revisable: false,
+    // 使用状況レポートを 1 回取得する。
+    requestsPerCollection: 1,
 
     async collect(date: string): Promise<CollectionResult> {
       const endingAt = new Date(`${date}T00:00:00Z`);
