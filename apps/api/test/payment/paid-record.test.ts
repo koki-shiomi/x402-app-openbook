@@ -6,6 +6,7 @@ import { sha256Hex } from '@openbook/shared';
 import type { FacilitatorClient } from '@x402/core/server';
 
 import { putAnchorRecord } from '../../src/anchor/store.js';
+import { listPaymentReceipts } from '../../src/payment/receipts.js';
 import { paidRecordMiddleware, serveRecord } from '../../src/api/paid-record.js';
 import { recordKey } from '../../src/storage.js';
 
@@ -175,6 +176,127 @@ describe('決済が成立した場合', () => {
     expect(response.headers.get('X-Anchor-Hash')).toBe(await sha256Hex(body));
     expect(response.headers.get('X-Anchor-Revision')).toBe('1');
     expect(response.headers.get('X-Anchor-Transaction')).toBe('0xabc');
+  });
+});
+
+describe('支払いの明細', () => {
+  /** 402 の応答から支払いの条件を取り出し、それに沿った支払いのヘッダを組み立てる。 */
+  async function paymentHeaderFor(app: ReturnType<typeof buildApp>, path: string) {
+    const unpaid = await app.request(path);
+    const header = unpaid.headers.get('PAYMENT-REQUIRED');
+    const required = JSON.parse(
+      header !== null ? atob(header) : await unpaid.text(),
+    ) as { accepts: Record<string, unknown>[] };
+
+    return btoa(
+      JSON.stringify({
+        x402Version: 2,
+        accepted: required.accepts[0],
+        payload: {
+          signature: `0x${'11'.repeat(65)}`,
+          authorization: {
+            from: '0x0000000000000000000000000000000000000001',
+            to: PAID_ENV.X402_PAY_TO,
+            value: '100000',
+            validAfter: '0',
+            validBefore: String(Math.floor(Date.now() / 1000) + 3600),
+            nonce: `0x${'22'.repeat(32)}`,
+          },
+        },
+      }),
+    );
+  }
+
+  it('決済が成立すると明細が保存される', async () => {
+    await seedAnchoredRecord('2026-09-15');
+    const app = buildApp('valid');
+
+    await app.request('/v1/records/2026-09-15', {
+      headers: { 'PAYMENT-SIGNATURE': await paymentHeaderFor(app, '/v1/records/2026-09-15') },
+    });
+
+    const receipts = await listPaymentReceipts(env.RECORDS, '2026-09-15');
+
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      date: '2026-09-15',
+      amount: '100000',
+      asset: USDC,
+      network: 'eip155:5042002',
+      transactionHash: '0xsettled',
+    });
+    expect(receipts[0]?.settledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('成立しなかった支払いでは明細が保存されない', async () => {
+    await seedAnchoredRecord('2026-09-15');
+    const app = buildApp('invalid');
+
+    await app.request('/v1/records/2026-09-15', {
+      headers: { 'PAYMENT-SIGNATURE': await paymentHeaderFor(app, '/v1/records/2026-09-15') },
+    });
+
+    expect(await listPaymentReceipts(env.RECORDS, '2026-09-15')).toEqual([]);
+  });
+
+  it('支払いのない要求では明細が保存されない', async () => {
+    await seedAnchoredRecord('2026-09-15');
+
+    await buildApp('valid').request('/v1/records/2026-09-15');
+
+    expect(await listPaymentReceipts(env.RECORDS, '2026-09-15')).toEqual([]);
+  });
+});
+
+describe('明細の保存に失敗した場合', () => {
+  it('本文は返る', async () => {
+    const bytes = await seedAnchoredRecord('2026-09-15');
+    const app = buildApp('valid');
+
+    const unpaid = await app.request('/v1/records/2026-09-15');
+    const header = unpaid.headers.get('PAYMENT-REQUIRED');
+    const required = JSON.parse(
+      header !== null ? atob(header) : await unpaid.text(),
+    ) as { accepts: Record<string, unknown>[] };
+    const signature = btoa(
+      JSON.stringify({
+        x402Version: 2,
+        accepted: required.accepts[0],
+        payload: {
+          signature: `0x${'11'.repeat(65)}`,
+          authorization: {
+            from: '0x0000000000000000000000000000000000000001',
+            to: PAID_ENV.X402_PAY_TO,
+            value: '100000',
+            validAfter: '0',
+            validBefore: String(Math.floor(Date.now() / 1000) + 3600),
+            nonce: `0x${'22'.repeat(32)}`,
+          },
+        },
+      }),
+    );
+
+    // 明細の保存だけを失敗させる。
+    const original = env.RECORDS.put;
+    env.RECORDS.put = (async (key: string, ...rest: unknown[]) => {
+      if (key.startsWith('payments/')) {
+        throw new Error('保存に失敗しました');
+      }
+      return (original as (...args: unknown[]) => unknown).call(env.RECORDS, key, ...rest);
+    }) as typeof env.RECORDS.put;
+
+    try {
+      const response = await app.request('/v1/records/2026-09-15', {
+        headers: { 'PAYMENT-SIGNATURE': signature },
+      });
+
+      expect(response.status).toBe(200);
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    } finally {
+      env.RECORDS.put = original;
+    }
+
+    expect(await listPaymentReceipts(env.RECORDS, '2026-09-15')).toEqual([]);
   });
 });
 

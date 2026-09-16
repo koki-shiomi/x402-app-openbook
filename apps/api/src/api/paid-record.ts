@@ -3,7 +3,13 @@ import type { Context, MiddlewareHandler } from 'hono';
 
 import { readAnchorRecord } from '../anchor/store.js';
 import { loadPaymentConfig, type PaymentConfig } from '../payment/config.js';
-import { createPaymentMiddleware, PAID_ROUTE_PATTERN } from '../payment/middleware.js';
+import { writePaymentReceipt } from '../payment/receipts.js';
+import {
+  createPaymentMiddleware,
+  PAID_ROUTE_PATTERN,
+  PAYMENT_ASSET,
+  PAYMENT_NETWORK,
+} from '../payment/middleware.js';
 import { getRecord } from '../storage.js';
 import { anchorHeaders } from './record-response.js';
 import { resolveRecordAccess, type RecordAccess } from './resolve-record.js';
@@ -106,8 +112,78 @@ export function paidRecordMiddleware(
       );
     }
 
-    return paymentMiddlewareFor(config, options.facilitator)(c, next);
+    const response = await paymentMiddlewareFor(config, options.facilitator)(c, next);
+    await recordSettlement(c, access.date);
+    return response;
   };
+}
+
+/**
+ * 決済が成立していれば、支払いの明細を保存する。
+ *
+ * 成立の結果は x402 のミドルウェアが `PAYMENT-RESPONSE` ヘッダへ載せるため、
+ * ミドルウェアの内部フックへ立ち入らずに読み取れる。
+ *
+ * 保存に失敗しても本文は返す。決済は既に成立しており、本文を返さないと
+ * 利用者が支払い損になる。
+ *
+ * @param c Hono のコンテキスト
+ * @param date 支払いの対象となった対象日
+ */
+async function recordSettlement(c: Context<PaidRecordEnv>, date: string): Promise<void> {
+  const header = c.res.headers.get('PAYMENT-RESPONSE');
+  if (header === null) {
+    return;
+  }
+
+  try {
+    const settlement = JSON.parse(atob(header)) as {
+      success?: boolean;
+      transaction?: string;
+      network?: string;
+      payer?: string;
+      amount?: string;
+    };
+
+    if (settlement.success !== true) {
+      return;
+    }
+
+    await writePaymentReceipt(c.env.RECORDS, {
+      settledAt: new Date().toISOString(),
+      date,
+      amount: settlement.amount ?? toAssetAmountOf(c),
+      asset: PAYMENT_ASSET,
+      network: settlement.network ?? PAYMENT_NETWORK,
+      payer: settlement.payer ?? '',
+      transactionHash: settlement.transaction ?? '',
+    });
+  } catch {
+    // 明細の保存に失敗しても本文は返す。失敗は公開データに影響しない。
+  }
+}
+
+/**
+ * 応答へ提示した支払いの条件から、実際に請求した金額を取り出す。
+ *
+ * 成立の結果に金額が含まれない場合（`exact` スキームでは authorized 額と一致するため
+ * 省略されうる）の補完に用いる。
+ *
+ * @param c Hono のコンテキスト
+ * @returns 資産の最小単位の整数の文字列
+ */
+function toAssetAmountOf(c: Context<PaidRecordEnv>): string {
+  const header = c.req.header('PAYMENT-SIGNATURE');
+  if (header === undefined) {
+    return '';
+  }
+
+  try {
+    const payload = JSON.parse(atob(header)) as { accepted?: { amount?: string } };
+    return payload.accepted?.amount ?? '';
+  } catch {
+    return '';
+  }
 }
 
 /**
