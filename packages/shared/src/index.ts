@@ -1,4 +1,5 @@
 export { ANCHOR_REGISTRY_ABI } from './abi.js';
+export { GATEWAY_WALLET_ABI } from './gateway.js';
 export { canonicalize } from './canonical.js';
 export { createRegistryReader, type RegistryReaderConfig } from './reader.js';
 export { sha256Hex, type HexHash } from './hash.js';
