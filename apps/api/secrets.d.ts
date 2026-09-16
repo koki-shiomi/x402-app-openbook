@@ -61,4 +61,17 @@ interface __BaseEnv_Env {
   ARC_RPC_URL?: string;
   /** 刻印のコントラクトのアドレス。 */
   ARC_ANCHOR_CONTRACT?: string;
+
+  /**
+   * x402 の facilitator の所在。
+   *
+   * Circle の hosted facilitator（`https://gateway-api-testnet.circle.com/v1/x402`）は
+   * API キーを要求せず、Arc Testnet（`eip155:5042002`）に対応する。別の facilitator や
+   * 自前の実装へ切り替えられるよう設定値にする。
+   */
+  X402_FACILITATOR_URL?: string;
+  /** 支払いの受取先アドレス。刻印用の EOA と兼用する（受取だけなら署名は不要）。 */
+  X402_PAY_TO?: string;
+  /** 日次レコード 1 日分の価格（USDC、10 進小数の文字列）。既定は 0.10。 */
+  X402_PRICE_USDC?: string;
 }

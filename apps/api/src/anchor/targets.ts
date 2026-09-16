@@ -7,6 +7,8 @@
  * 詳細は specs/hash-anchoring/spec.md を参照。
  */
 
+import { latestRevisionByPrefix } from '../r2-listing.js';
+
 /** 1 回の送信に含める刻印の上限。ブロックのガス上限に対して十分小さい値とする。 */
 export const ANCHOR_BATCH_LIMIT = 30;
 
@@ -16,52 +18,6 @@ export interface AnchorTarget {
   date: string;
   /** 刻印するリビジョン番号。 */
   revision: number;
-}
-
-/**
- * 接頭辞に一致するキーをすべて列挙する。
- *
- * @param bucket 取得元の R2 バケット
- * @param prefix キーの接頭辞
- * @returns オブジェクトキーの配列
- */
-async function listKeys(bucket: R2Bucket, prefix: string): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor: string | undefined;
-
-  do {
-    const listed = await bucket.list(cursor === undefined ? { prefix } : { prefix, cursor });
-    keys.push(...listed.objects.map((object) => object.key));
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor !== undefined);
-
-  return keys;
-}
-
-/**
- * `<接頭辞>/{対象日}/{リビジョン}.json` のキーから、対象日ごとの最大のリビジョンを求める。
- *
- * @param keys オブジェクトキーの配列
- * @returns 対象日をキー、最大のリビジョン番号を値とする対応
- */
-function latestRevisionByDate(keys: readonly string[]): Map<string, number> {
-  const latest = new Map<string, number>();
-
-  for (const key of keys) {
-    const [, date, file] = key.split('/');
-    if (date === undefined || file === undefined) {
-      continue;
-    }
-
-    const revision = Number(file.replace('.json', ''));
-    if (!Number.isInteger(revision)) {
-      continue;
-    }
-
-    latest.set(date, Math.max(latest.get(date) ?? 0, revision));
-  }
-
-  return latest;
 }
 
 /** 刻印の対象の一覧。 */
@@ -82,8 +38,8 @@ export interface AnchorTargets {
  * @returns 刻印の対象と、次の実行へ回した対象
  */
 export async function listAnchorTargets(bucket: R2Bucket): Promise<AnchorTargets> {
-  const records = latestRevisionByDate(await listKeys(bucket, 'records/'));
-  const anchored = latestRevisionByDate(await listKeys(bucket, 'anchors/'));
+  const records = await latestRevisionByPrefix(bucket, 'records/');
+  const anchored = await latestRevisionByPrefix(bucket, 'anchors/');
 
   const pending = [...records.entries()]
     .filter(([date, revision]) => (anchored.get(date) ?? 0) < revision)

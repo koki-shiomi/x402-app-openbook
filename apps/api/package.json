@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@openbook/shared": "workspace:*",
+    "@x402/core": "2.26.0",
+    "@x402/evm": "2.26.0",
+    "@x402/hono": "2.26.0",
     "hono": "^4.13.7",
     "viem": "^2.56.5"
   },

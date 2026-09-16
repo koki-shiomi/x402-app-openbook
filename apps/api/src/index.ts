@@ -8,6 +8,8 @@ import {
 } from '@openbook/shared';
 
 import { runAnchoring } from './anchor/index.js';
+import { listAvailableRecords } from './api/listing.js';
+import { paidRecordMiddleware, serveRecord } from './api/paid-record.js';
 import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import { buildCostSources, buildRevenueSources } from './sources/index.js';
@@ -54,6 +56,25 @@ const app = new Hono<{ Bindings: Env }>();
  * デプロイ後の疎通確認と、レコード形式のバージョン確認に用いる。
  */
 app.get('/health', (c) => c.json({ status: 'ok', schemaVersion: SCHEMA_VERSION }));
+
+/**
+ * 取得可能な日付の一覧。支払いは求めない。
+ *
+ * 対象日とリビジョン番号のみを返し、金額は含めない。刻印済みの日だけが対象になる。
+ */
+app.get('/v1/records', async (c) => {
+  const records = await listAvailableRecords(c.env.RECORDS);
+  return c.json({ records });
+});
+
+/**
+ * 日次レコードの取得。
+ *
+ * 前段のミドルウェアが対象日の妥当性・レコードの存在・刻印の有無を判定し、
+ * 取得できる場合のみ x402 の決済へ進む。決済が成立するとハンドラが本文を返す。
+ */
+app.use('/v1/records/:date', paidRecordMiddleware());
+app.get('/v1/records/:date', serveRecord);
 
 /**
  * 手動再実行。任意の過去日を対象に収集を実行する。
