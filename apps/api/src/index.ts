@@ -7,6 +7,7 @@ import {
   type ExchangeRate,
 } from '@openbook/shared';
 
+import { runAnchoring } from './anchor/index.js';
 import { isAuthorized } from './auth.js';
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import { buildCostSources, buildRevenueSources } from './sources/index.js';
@@ -72,15 +73,20 @@ app.post('/admin/rerun', async (c) => {
     return c.json({ error: 'date は実在する UTC 暦日である必要があります' }, 400);
   }
 
+  const now = new Date().toISOString();
+
   // 遡及できない取得元は呼び出さず、既存の値を引き継ぐ。
   const { record, skipped } = await collectWithinReach(
     c.env.RECORDS,
     buildSources(c.env),
     date,
-    buildRunOptions(new Date().toISOString()),
+    buildRunOptions(now),
   );
 
-  return c.json({ date, revision: record?.revision ?? null, skipped });
+  // 刻印は収集の後段で行う。失敗しても収集の結果には影響しない。
+  const anchor = await runAnchoring(c.env.RECORDS, c.env, { now });
+
+  return c.json({ date, revision: record?.revision ?? null, skipped, anchor });
 });
 
 export default {
@@ -90,6 +96,7 @@ export default {
    * Cron Triggers による定期実行。
    *
    * 前日を対象に収集し、あわせて実行時点から一定日数以内の既存レコードを再収集する。
+   * 収集を終えたら、最新リビジョンが未刻印の日をまとめて刻印する。
    */
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const now = new Date(controller.scheduledTime).toISOString();
@@ -99,5 +106,6 @@ export default {
 
     await runDaily(env.RECORDS, sources, previousDay(now), options);
     await recollectRecent(env.RECORDS, sources, options);
+    await runAnchoring(env.RECORDS, env, { now });
   },
 } satisfies ExportedHandler<Env>;

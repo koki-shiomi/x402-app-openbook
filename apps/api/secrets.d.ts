@@ -49,4 +49,16 @@ interface __BaseEnv_Env {
   ADMOB_PUBLISHER_ID?: string;
   /** 収益の対象とする sizet のアプリ ID（`ca-app-pub-` で始まる）。 */
   ADMOB_APP_ID?: string;
+
+  /**
+   * 刻印専用の EOA の秘密鍵（`0x` で始まる 32 バイト）。
+   *
+   * このアドレスだけが刻印のコントラクトへ書き込める。漏洩した場合に失うのは
+   * 刻印の書き込み権限とテストネットの USDC に限られるよう、他の用途に使わない。
+   */
+  ARC_SIGNER_PRIVATE_KEY?: string;
+  /** Arc テストネットの RPC の URL。公式の URL と viem の既定値が異なるため設定値で渡す。 */
+  ARC_RPC_URL?: string;
+  /** 刻印のコントラクトのアドレス。 */
+  ARC_ANCHOR_CONTRACT?: string;
 }

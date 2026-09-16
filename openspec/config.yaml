@@ -126,6 +126,26 @@ context: |
     ECB は営業日のみ公表するため、休場日は対象日以前で最新の公表日のレートを用いる
   - x402: CAIP-2 で任意の EVM チェーンを指定でき、Arc Testnet は `eip155:5042002`。
     テストネットは Circle の hosted facilitator が利用できる
+  - Arc Testnet: チェーン ID は `5042002`。公式ドキュメントの RPC は
+    `https://rpc.testnet.arc.io`、viem の `arcTestnet` 定義の既定は
+    `https://rpc.testnet.arc.network` で、**2026-09-14 時点で両方とも応答する**。
+    ガスはネイティブの USDC で払い、**ネイティブの桁数は 18**（ERC-20 としては 6）。
+    公式ドキュメントは `maxFeePerGas` を 20 Gwei 以上にするよう求めており、下回ると
+    エラーを返さずに破棄されうる。ファイナリティは 1 秒未満で reorg は起きない
+    （公式ドキュメント）。**ブロック間隔は約 0.5 秒**（86,400 ブロックで約 43,960 秒）。
+    公式 RPC の `eth_getLogs` は **20,000 ブロックの範囲は取得でき、50,000 ブロックでは
+    `requested range too large`** になる（連続して呼ぶと `rate limit exceeded`）。
+    コントラクトの配備と検証は、公式チュートリアルが Arc Foundry（`arc-forge`）と
+    ArcScan（Blockscout、`https://testnet.arcscan.app/api/`）を案内している。
+    テストネットのデータが消去されうるかは公式ドキュメントに記載がない
+    Circle の Faucet は **1 回の要求で 20 USDC** を入金した（2026-09-15 に確認。
+    再要求できる間隔は未確認）。刻印専用の EOA は `0xd77dd307A9E395fB2680011deeD994A27cf70d4b`。
+    ブロックのガス上限は **30,000,000**、base fee は下限の 20 Gwei で推移している。
+    刻印のコントラクト `AnchorRegistry` は
+    **`0xC039722204Dde6DF3dFb48a9a3068163d30b997a`**（2026-09-16 配備、ArcScan で
+    ソース検証済み、solc 0.8.36、OpenZeppelin v5.7.0 の `Ownable` を使用）。
+    刻印のガスは 1 件で約 74,000、30 件で約 1,519,000（ローカル実測）で、
+    30 件でもブロック上限の約 5% に収まる
 
   ## ドキュメント方針
 
@@ -145,3 +165,4 @@ operations:
   apply:
     guidance:
       - テストファーストを原則とする。要件に沿ったテストをまず実装より先に作成し、実装はすべてのテストにパスすることを必須とする
+      - コントラクトはセキュリティ担保を重視するため、openzeppelinのライブラリを積極的に活用し、独自実装は最小限にする

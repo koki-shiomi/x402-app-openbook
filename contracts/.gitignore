@@ -1,0 +1,7 @@
+# ビルド成果物
+out/
+cache/
+broadcast/
+
+# 依存。README.md の手順で復元する
+lib/

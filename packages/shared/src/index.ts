@@ -1,4 +1,7 @@
+export { ANCHOR_REGISTRY_ABI } from './abi.js';
 export { canonicalize } from './canonical.js';
+export { createRegistryReader, type RegistryReaderConfig } from './reader.js';
+export { sha256Hex, type HexHash } from './hash.js';
 export { convertToJpy, fetchUsdJpyRate, type FetchRateOptions } from './exchange.js';
 export { createRecord, type CreateRecordInput } from './create.js';
 export {
@@ -17,6 +20,14 @@ export {
 } from './policy.js';
 export { computeTotals, recordIncomplete, type TotalsInput } from './totals.js';
 export { isCalendarDate, validateRecord } from './validate.js';
+export {
+  verifyAnchoredRecord,
+  ZERO_HASH,
+  type AnchorReader,
+  type VerificationEvidence,
+  type VerificationResult,
+  type VerificationStatus,
+} from './verify.js';
 export {
   BASE_CURRENCY,
   CURRENCY_SCALES,

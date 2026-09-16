@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@openbook/shared": "workspace:*",
-    "hono": "^4.13.7"
+    "hono": "^4.13.7",
+    "viem": "^2.56.5"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

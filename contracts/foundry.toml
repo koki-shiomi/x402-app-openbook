@@ -1,0 +1,12 @@
+# 刻印のコントラクト。pnpm のワークスペースには含めず、Arc Foundry で扱う。
+# 依存は lib/ へ配置し、リポジトリには含めない（README.md の手順で復元する）。
+
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
