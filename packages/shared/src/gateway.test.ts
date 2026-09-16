@@ -18,8 +18,11 @@ describe('Gateway Wallet の ABI', () => {
     expect(fn?.stateMutability).toBe('view');
   });
 
-  it('引き出しの残高は含めない', () => {
+  it('残高の照会に用いる関数だけを持つ', () => {
     // withdrawableBalance は引き出しの待機期間を表し、支払いの可否とは別の概念。
-    expect(GATEWAY_WALLET_ABI.some((item) => item.name === 'withdrawableBalance')).toBe(false);
+    // 取り違えると、預け入れ済みでも支払えないと誤って判定する。
+    const names: readonly string[] = GATEWAY_WALLET_ABI.map((item) => item.name);
+
+    expect(names).toEqual(['availableBalance']);
   });
 });
