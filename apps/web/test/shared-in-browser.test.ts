@@ -36,7 +36,9 @@ describe('共有パッケージのブラウザでの動作', () => {
       },
     });
 
-    expect(result.status).toBe('current');
+    expect(result).toEqual(
+      expect.objectContaining({ kind: 'classified', status: 'current' }),
+    );
   });
 
   it('刻印の照会を組み立てられる', () => {
