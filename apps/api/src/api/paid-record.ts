@@ -41,9 +41,10 @@ export interface PaidRecordOptions {
 /**
  * 設定ごとの決済ミドルウェアを isolate 内で使い回す。
  *
- * 組み立てのたびに facilitator との同期が起きるため、同じ設定なら作り直さない。
+ * 組み立てのたびに facilitator の広告を読む通信が起きるため、同じ設定なら作り直さない。
+ * 組み立てに失敗した場合は覚えず、次の要求で読み直す。
  */
-const middlewareCache = new Map<string, MiddlewareHandler<PaidRecordEnv>>();
+const middlewareCache = new Map<string, Promise<MiddlewareHandler<PaidRecordEnv>>>();
 
 /**
  * 決済のミドルウェアを取得する。同じ設定なら isolate 内で使い回す。
@@ -55,10 +56,12 @@ const middlewareCache = new Map<string, MiddlewareHandler<PaidRecordEnv>>();
 function paymentMiddlewareFor(
   config: PaymentConfig,
   facilitator?: FacilitatorClient,
-): MiddlewareHandler<PaidRecordEnv> {
+): Promise<MiddlewareHandler<PaidRecordEnv>> {
   // facilitator を差し替える場合は使い回さない（テストごとに挙動が異なるため）。
   if (facilitator !== undefined) {
-    return createPaymentMiddleware(config, facilitator) as MiddlewareHandler<PaidRecordEnv>;
+    return createPaymentMiddleware(config, facilitator) as Promise<
+      MiddlewareHandler<PaidRecordEnv>
+    >;
   }
 
   const key = `${config.facilitatorUrl}|${config.payTo}|${config.priceUsdc}`;
@@ -67,7 +70,11 @@ function paymentMiddlewareFor(
     return cached;
   }
 
-  const created = createPaymentMiddleware(config) as MiddlewareHandler<PaidRecordEnv>;
+  const created = createPaymentMiddleware(config).catch((error: unknown) => {
+    middlewareCache.delete(key);
+    throw error;
+  }) as Promise<MiddlewareHandler<PaidRecordEnv>>;
+
   middlewareCache.set(key, created);
   return created;
 }
@@ -112,7 +119,15 @@ export function paidRecordMiddleware(
       );
     }
 
-    const response = await paymentMiddlewareFor(config, options.facilitator)(c, next);
+    let middleware: MiddlewareHandler<PaidRecordEnv>;
+    try {
+      middleware = await paymentMiddlewareFor(config, options.facilitator);
+    } catch {
+      // facilitator の広告を読めないと支払いの条件を提示できない。無料で配らず拒む。
+      return c.json({ error: '決済の取次に接続できないため、現在このエンドポイントは利用できません' }, 503);
+    }
+
+    const response = await middleware(c, next);
     await recordSettlement(c, access.date);
     return response;
   };
@@ -121,8 +136,9 @@ export function paidRecordMiddleware(
 /**
  * 決済が成立していれば、支払いの明細を保存する。
  *
- * 成立の結果は x402 のミドルウェアが `PAYMENT-RESPONSE` ヘッダへ載せるため、
- * ミドルウェアの内部フックへ立ち入らずに読み取れる。
+ * 成立の結果はプロトコルが定める `PAYMENT-RESPONSE` ヘッダに載る。決済後のフック
+ * （`onAfterSettle`）からは R2 のバインディングへ到達できないため、ヘッダから読む。
+ * 詳細は design.md の決定 6 を参照。
  *
  * 保存に失敗しても本文は返す。決済は既に成立しており、本文を返さないと
  * 利用者が支払い損になる。

@@ -77,11 +77,30 @@
 
 ### 決定 4: x402 は `@x402/hono` の設定ベースのミドルウェアを使う
 
-`paymentMiddlewareFromConfig(routes, facilitatorClient, schemes)` を、レコードの取得パスにのみ適用する。scheme は `@x402/evm` の `ExactEvmScheme` を `eip155:5042002` に登録する。
+`paymentMiddlewareFromConfig(routes, facilitatorClient, schemes)` を、レコードの取得パスにのみ適用する。scheme は `@x402/evm/exact/server` の `ExactEvmScheme` を `eip155:5042002` に登録する。
 
 **理由:** 自前で `PAYMENT-REQUIRED` の組み立て、`PAYMENT-SIGNATURE` の解釈、facilitator の呼び出し、`PAYMENT-RESPONSE` の付与を書くと、プロトコルの改訂に追従し続ける必要がある。Coinbase が保守するミドルウェアに委ねる。
 
-**facilitator との起動時の同期:** `syncFacilitatorOnStart` は既定値の `true` のまま用いる。Worker では isolate ごとに起動が起きるため、その都度 facilitator の `/supported` を読み直す呼び出しが発生するが、facilitator 側が `extra`（`verifyingContract` など）を変更した場合に自動で追従できる利点を優先する。`extra` を自前でハードコードすると、Circle 側の変更に気づけないまま決済が成立しなくなる恐れがある。isolate の起動頻度に対して 1 回の HTTP 呼び出しは軽く、決済の成立に影響しない範囲と判断する。
+**scheme の取得元を `exact/server` に限る:** `@x402/evm` の直下が公開する同名の `ExactEvmScheme` は `SchemeNetworkClient` を実装する支払う側の実装で、コンストラクタに署名鍵を要求する。請求する側が用いるのは `SchemeNetworkServer` を実装する `@x402/evm/exact/server` の同名クラスである。両者は役割が異なるため統合できず、この分離によって受取専用の Worker が署名鍵を持たずに済む。取り違えた場合は `SchemeNetworkServer` の必須メンバー（`paymentFlows`・`parsePrice` ほか）が欠けるため型検査で検出できる。
+
+**facilitator の広告を支払いの条件へ引き写す:** ミドルウェアの組み立ての前に `/supported` を読み、`exact` かつ `eip155:5042002` の項目から `extra` と有効期間の下限を取り出して、支払いの条件へそのまま載せる。ミドルウェア自体は設定ごとに isolate 内で使い回すため、通信は isolate あたり 1 回で済む。読めない場合は支払いの条件を提示できないため 503 を返し、レコードを無料で配らない。
+
+`@x402/hono` はこの引き写しを行わない。`exact` スキームのサーバ実装が `supportedKind` を受け取りながら使わないためである。`extra` の出どころは価格の解釈の結果かルートの設定のいずれかに限られ、Arc は SDK の既定資産の表に無いため前者も空になる。`syncFacilitatorOnStart` が読み込む内容も、対応の可否の判定にしか使われない。
+
+引き写しが必要な理由は、facilitator の受理条件が広告と厳密に結びついているためである。`/verify` を直接呼んで確かめた結果は次のとおり。
+
+| 提示した条件 | `/verify` の応答 |
+| --- | --- |
+| `extra` に資産自身のドメイン（`USDC` / `2`） | `unsupported_scheme` |
+| `extra` は広告どおり、有効期間 300 秒 | `authorization_validity_too_short` |
+| `extra` は広告どおり、有効期間 604800 秒、署名は資産のドメイン | `invalid_signature` |
+| `extra` は広告どおり、有効期間 604800 秒、署名は広告のドメイン | `isValid: true` |
+
+**有効期間に余裕を持たせる:** 広告される下限 604800 秒（7 日）に 300 秒を足した値を提示する。利用者は署名した時刻を起点に期限を決めるが、facilitator は受け取った時刻を基準に下限を満たすか確かめるため、往復の遅れの分だけ短く見える。
+
+**利用者側の制約:** `@x402/evm` の `exact` の利用者側の実装は、署名の `verifyingContract` に資産のアドレスを固定で用いる。広告される `verifyingContract`（`0x0077777d7eba4688bdef3e311b846f25870a19b9`）を用いないため、この実装のままでは署名が受理されない。利用者は広告されたドメインで自前に署名する必要がある。この制約は API ドキュメントに記す。
+
+**自己送金はできない:** facilitator は支払い元と受取先が同一の支払いを `self_transfer` として拒む。
 
 **検討した代替案:** 自前で verify/settle を実装する案。Arc の USDC は EIP-3009 に対応しており（`DOMAIN_SEPARATOR` と `authorizationState` の応答を実測）技術的には可能だが、二重支払いの防止・手数料の負担・nonce の管理を自前で持つことになる。利用者が運営者 1 名の規模では見合わない。
 
@@ -102,6 +121,8 @@
 `payments/{対象日}/{成立時刻}.json` に、成立時刻・対象日・金額・資産・ネットワーク・支払い元のアドレス・トランザクションのハッシュを保存する。
 
 **理由:** 対象日ごとに引けると、⑥で「この日は何回買われたか」を示せる。時刻をキーに含めるため、同じ日への複数回の支払いが上書きされない。
+
+**成立の検知:** ミドルウェアが応答へ付与する `PAYMENT-RESPONSE` ヘッダを読み、成立していれば明細を保存する。`x402ResourceServer` は `onAfterSettle` という決済後のフックを公開しているが、これを使うには設定ベースのミドルウェアをやめてサーバの実体を自前で組み立てる必要があり、さらにフックへ渡る文脈から R2 のバインディングへ到達する公開の経路がない。ヘッダはプロトコル V2 が定めるもので、載る値はフックが受け取る成立の結果と同一である。より安定した契約から同じ値を読めるため、ヘッダを採る。
 
 **書き込みの失敗:** 明細の保存に失敗しても、本文は返す。決済は既に成立しており、本文を返さないと利用者が支払い損になる。失敗は記録に残すのみとする。
 

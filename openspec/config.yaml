@@ -132,7 +132,26 @@ context: |
   - 為替: Frankfurter（`api.frankfurter.dev`、ECB 公表値、API キー不要）を使う。
     ECB は営業日のみ公表するため、休場日は対象日以前で最新の公表日のレートを用いる
   - x402: CAIP-2 で任意の EVM チェーンを指定でき、Arc Testnet は `eip155:5042002`。
-    テストネットは Circle の hosted facilitator が利用できる
+    テストネットは Circle の hosted facilitator
+    （`https://gateway-api-testnet.circle.com/v1/x402`、**API キー不要**）が利用できる。
+    `/supported` は `exact` に対して `extra` を返し、そこに EIP-712 のドメイン
+    （`name` は `GatewayWalletBatched`、`version` は `1`、`verifyingContract` は
+    `0x0077777d7eba4688bdef3e311b846f25870a19b9`）と有効期間の下限
+    `minValiditySeconds: 604800` が入る。**この `extra` と一致しない条件を提示すると
+    `/verify` は `unsupported_scheme` を返す**ため、広告をそのまま支払いの条件へ
+    引き写す必要がある。`@x402/hono` 2.26.0 はこの引き写しを行わない
+    （`exact` のサーバ実装が `supportedKind` を使わないため、`extra` は空になる）。
+    `/verify` の拒否理由は実測で次のとおり: 資産自身のドメインを提示すると
+    `unsupported_scheme`、有効期間が下限未満だと `authorization_validity_too_short`、
+    署名のドメインが広告と異なると `invalid_signature`、支払い元と受取先が同一だと
+    `self_transfer`。`@x402/evm` 2.26.0 の `exact` **クライアント**は署名の
+    `verifyingContract` に資産のアドレスを固定で用いるため、この facilitator へは
+    そのままでは支払えず、広告されたドメインで自前に署名する必要がある。
+    決済の実行には、支払い元が **Circle の Gateway Wallet へ USDC を預け入れて**
+    おく必要がある（`approve` のうえ `deposit(token, value)`）。ウォレットに
+    残高があるだけでは `insufficient_balance` になる。成立の結果の `transaction`
+    はチェーンのトランザクションハッシュではなく **Circle の決済 ID（UUID）** である
+    （バッチで決済するため。2026-09-16 に実際の支払いで確認）
   - Arc Testnet: チェーン ID は `5042002`。公式ドキュメントの RPC は
     `https://rpc.testnet.arc.io`、viem の `arcTestnet` 定義の既定は
     `https://rpc.testnet.arc.network` で、**2026-09-14 時点で両方とも応答する**。
