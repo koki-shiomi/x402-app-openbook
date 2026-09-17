@@ -148,10 +148,14 @@ context: |
     `verifyingContract` に資産のアドレスを固定で用いるため、この facilitator へは
     そのままでは支払えず、広告されたドメインで自前に署名する必要がある。
     決済の実行には、支払い元が **Circle の Gateway Wallet へ USDC を預け入れて**
-    おく必要がある（`approve` のうえ `deposit(token, value)`）。ウォレットに
-    残高があるだけでは `insufficient_balance` になる。成立の結果の `transaction`
+    おく必要がある。ウォレットに残高があるだけでは `insufficient_balance` になる。
+    預け入れの手段は後述の Gateway Wallet の項を参照。成立の結果の `transaction`
     はチェーンのトランザクションハッシュではなく **Circle の決済 ID（UUID）** である
-    （バッチで決済するため。2026-09-16 に実際の支払いで確認）
+    （バッチで決済するため。2026-09-16 に実際の支払いで確認）。
+    バッチであるため **成立の記録とチェーン上の残高の反映は同時ではない**。
+    2026-09-17 に 3 件の支払いが成立した直後でも、受取先の Gateway 内の残高は
+    前日の 1 件分（100000）のままだった。チェーン上の残高で支払いの成否を
+    判定してはならない
   - Circle Gateway Wallet（`0x0077777d7eba4688bdef3e311b846f25870a19b9`）: 残高は
     **預入者のアドレスごとに分別される**（`availableBalance(address token, address depositor)`。
     3 つのアドレスが別々の残高を持つことを実測）。Circle の残高 API も
@@ -168,7 +172,24 @@ context: |
     連番の競合がなく、内部で `receiveWithAuthorization` を呼ぶため受取先が
     呼び出し元であることを要求し、署名を第三者が悪用できない。
     `withdrawableBalance` は引き出しの待機期間を表す別の値で、支払いの可否の判定に
-    用いない。公式の買い手向け手順は `approve` + `deposit` の例のみを載せている
+    用いない。公式の買い手向け手順は `approve` + `deposit` の例のみを載せている。
+    `depositWithAuthorization` による預け入れは 2026-09-17 にブラウザから実測済みで、
+    **使用枠を与えるトランザクションなしにトランザクション 1 回**で 1 USDC が
+    決済に使える残高へ入った
+  - ウォレットへ渡す EIP-712: `eth_signTypedData_v4` の JSON の `types` には
+    **`EIP712Domain` を必ず含める**。省くと MetaMask（eth-sig-util）は
+    `EIP712Domain: []` を補い、**空のドメイン `EIP712Domain()` で符号化した別の
+    digest に署名する**。ウォレットはエラーを返さず署名は正常に返るため、失敗は
+    トランザクションを送った後に `FiatTokenV2: invalid signature` として現れる。
+    原因の切り分けは、署名から署名者を復元して本人と一致するかを見る。一致しない
+    場合、区切り子を `keccak256(abi.encode(keccak256("EIP712Domain()")))` に
+    差し替えて再度復元し、本人と一致すればこの誤りで確定する（2026-09-17 に
+    失敗した 2 件の預け入れで実証）。viem の `signTypedData` と `hashTypedData` は
+    `EIP712Domain` の有無を無視するため、**viem に委譲する疑似ウォレットでは
+    この誤りを再現できない**。疑似ウォレット側に `EIP712Domain` の有無と内容を
+    検査させて初めてテストで捕まえられる。
+    なお静的な資産を差し替えても**開いたままのタブは再読み込みするまで古い
+    JavaScript を実行し続ける**ため、実機で署名の失敗を見たらまず再読み込みを疑う
   - Arc Testnet: チェーン ID は `5042002`。公式ドキュメントの RPC は
     `https://rpc.testnet.arc.io`、viem の `arcTestnet` 定義の既定は
     `https://rpc.testnet.arc.network` で、**2026-09-14 時点で両方とも応答する**。
