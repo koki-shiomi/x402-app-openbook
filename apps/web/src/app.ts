@@ -1,14 +1,14 @@
 import type { AnchorReader, DailyRecord } from '@openbook/shared';
 
 import { fetchAvailableRecords, type AvailableRecord } from './api.js';
-import { readDeposit } from './deposit.js';
+import { deposit, readDeposit, type DepositStage } from './deposit.js';
 import { purchase } from './purchase.js';
 import { renderRecord } from './record-view.js';
 import { verify } from './verification.js';
 import { renderVerification } from './verification-view.js';
-import { connect, ensureChain, findProvider } from './wallet.js';
+import { connect as connectWallet, ensureChain, findProvider } from './wallet.js';
 import type { EthereumProvider } from './preconditions.js';
-import { ANCHOR_CHAIN_ID } from './config.js';
+import { ANCHOR_CHAIN_ID, PAYMENT_ASSET } from './config.js';
 
 /**
  * 画面の組み立て。
@@ -27,6 +27,8 @@ export interface AppDeps {
   readDeposit?: (asset: string, account: string) => Promise<bigint>;
   /** 刻印の照会。省略時は画面の設定値でチェーンへ照会する。 */
   reader?: AnchorReader;
+  /** 預け入れの反映を確認する間隔（ミリ秒）。テストから短くする。 */
+  depositWaitMs?: number;
 }
 
 /**
@@ -43,6 +45,11 @@ export async function mount(container: HTMLElement, deps: AppDeps = {}): Promise
   const listing = document.createElement('section');
   listing.dataset['testid'] = 'listing';
   container.append(listing);
+
+  const walletPanel = document.createElement('section');
+  walletPanel.dataset['testid'] = 'deposit-panel';
+  container.append(walletPanel);
+  renderConnect(walletPanel, { fetchImpl, ...deps });
 
   const result = document.createElement('section');
   result.dataset['testid'] = 'result';
@@ -96,7 +103,7 @@ async function buy(
 
   try {
     // 接続とチェーンの確認は署名を伴わない。先に済ませて理由を示せるようにする。
-    await connect(ethereum);
+    await connectWallet(ethereum);
     await ensureChain(ethereum, ANCHOR_CHAIN_ID);
   } catch (error) {
     target.replaceChildren(
@@ -151,6 +158,175 @@ function renderDetails(details: Record<string, unknown>): HTMLElement {
 
   return list;
 }
+
+/**
+ * ウォレットの接続と、決済に使える残高の節を描く。
+ *
+ * 保有残高ではなく取次へ預け入れた額が決済に使える。この区別は分かりにくいため、
+ * 使える額を明示し、その場で預け入れられるようにする。
+ *
+ * @param target 描画先の要素
+ * @param deps 依存
+ */
+function renderConnect(target: HTMLElement, deps: AppDeps & { fetchImpl: typeof fetch }): void {
+  const heading = document.createElement('h2');
+  heading.textContent = 'ウォレット';
+  target.append(heading);
+
+  const connect = document.createElement('button');
+  connect.type = 'button';
+  connect.dataset['testid'] = 'connect';
+  connect.textContent = 'ウォレットを接続する';
+  target.append(connect);
+
+  const body = document.createElement('div');
+  target.append(body);
+
+  connect.addEventListener('click', () => {
+    void (async () => {
+      const ethereum = deps.ethereum ?? findProvider(globalThis as { ethereum?: unknown });
+      if (ethereum === undefined) {
+        body.replaceChildren(paragraph('ウォレットが見つかりません。'));
+        return;
+      }
+
+      try {
+        const address = await connectWallet(ethereum);
+        await ensureChain(ethereum, ANCHOR_CHAIN_ID);
+        connect.remove();
+        await renderDepositPanel(body, ethereum, address, deps);
+      } catch (error) {
+        body.replaceChildren(
+          paragraph(error instanceof Error ? error.message : 'ウォレットへ接続できませんでした'),
+        );
+      }
+    })();
+  });
+}
+
+/**
+ * 決済に使える残高と、預け入れの操作を描く。
+ *
+ * @param target 描画先の要素
+ * @param ethereum ウォレットのプロバイダ
+ * @param address 接続したアドレス
+ * @param deps 依存
+ */
+async function renderDepositPanel(
+  target: HTMLElement,
+  ethereum: EthereumProvider,
+  address: string,
+  deps: AppDeps,
+): Promise<void> {
+  const read = deps.readDeposit ?? readDeposit;
+
+  target.replaceChildren();
+  target.append(paragraph(`接続中: ${address}`));
+
+  const balance = document.createElement('p');
+  balance.dataset['testid'] = 'deposit-balance';
+  target.append(balance);
+
+  /** 決済に使える残高を読み直して描く。 */
+  const refresh = async (): Promise<void> => {
+    const current = await read(PAYMENT_ASSET, address);
+    balance.textContent = `決済に使える残高: ${toDisplayAmount(current)} USDC`;
+  };
+
+  await refresh();
+
+  target.append(
+    paragraph(
+      'ウォレットに USDC を持っているだけでは支払えません。' +
+        '決済の取次へ預け入れた分だけが決済に使えます。',
+    ),
+  );
+
+  const amount = document.createElement('input');
+  amount.type = 'text';
+  amount.dataset['testid'] = 'deposit-amount';
+  amount.value = '1.00';
+
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.dataset['testid'] = 'deposit-submit';
+  submit.textContent = '預け入れる';
+
+  const status = document.createElement('p');
+  status.dataset['testid'] = 'deposit-status';
+
+  target.append(amount, submit, status);
+
+  submit.addEventListener('click', () => {
+    void (async () => {
+      const value = toBaseUnits(amount.value);
+      if (value === undefined) {
+        status.textContent = '額は 0.000001 以上の数で指定してください。';
+        return;
+      }
+
+      submit.disabled = true;
+
+      const result = await deposit(value, {
+        ethereum,
+        address,
+        readDeposit: read,
+        ...(deps.depositWaitMs === undefined ? {} : { waitMs: deps.depositWaitMs }),
+        onStage: (stage) => {
+          status.textContent = STAGE_LABELS[stage];
+        },
+      });
+
+      submit.disabled = false;
+
+      if (!result.ok) {
+        status.textContent = result.message;
+        return;
+      }
+
+      await refresh();
+    })();
+  });
+}
+
+/** 預け入れの進み具合の表示名。 */
+const STAGE_LABELS: Record<DepositStage, string> = {
+  signing: '署名を求めています…',
+  sending: 'トランザクションを送っています…',
+  waiting: '決済に使える残高へ反映されるのを待っています…',
+  done: '預け入れが完了しました。',
+};
+
+/**
+ * 資産の最小単位を表示用の額へ直す。
+ *
+ * @param value 最小単位の額
+ * @returns 小数 2 桁以上の表示
+ */
+function toDisplayAmount(value: bigint): string {
+  const whole = value / 1_000_000n;
+  const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '');
+
+  return `${whole}.${fraction.padEnd(2, '0')}`;
+}
+
+/**
+ * 表示用の額を資産の最小単位へ直す。
+ *
+ * @param input 利用者が入力した額
+ * @returns 最小単位の額。解釈できない場合は undefined
+ */
+function toBaseUnits(input: string): bigint | undefined {
+  if (!/^\d+(\.\d{1,6})?$/.test(input.trim())) {
+    return undefined;
+  }
+
+  const [whole = '0', fraction = ''] = input.trim().split('.');
+  const value = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+
+  return value > 0n ? value : undefined;
+}
+
 
 /**
  * この画面の位置づけを示す。

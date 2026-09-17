@@ -18,11 +18,21 @@ describe('Gateway Wallet の ABI', () => {
     expect(fn?.stateMutability).toBe('view');
   });
 
-  it('残高の照会に用いる関数だけを持つ', () => {
+  it('預け入れは使用枠を要さない関数を持つ', () => {
+    const fn = GATEWAY_WALLET_ABI.find((item) => item.name === 'depositWithAuthorization');
+
+    expect(fn?.inputs.map((input) => input.type)).toEqual([
+      'address', 'address', 'uint256', 'uint256', 'uint256', 'bytes32', 'uint8', 'bytes32', 'bytes32',
+    ]);
+    expect(fn?.stateMutability).toBe('nonpayable');
+  });
+
+  it('必要な関数だけを持つ', () => {
     // withdrawableBalance は引き出しの待機期間を表し、支払いの可否とは別の概念。
     // 取り違えると、預け入れ済みでも支払えないと誤って判定する。
+    // deposit は事前に使用枠を与える必要があり、利用者の操作が 1 つ増える。
     const names: readonly string[] = GATEWAY_WALLET_ABI.map((item) => item.name);
 
-    expect(names).toEqual(['availableBalance']);
+    expect(names).toEqual(['availableBalance', 'depositWithAuthorization']);
   });
 });

@@ -88,3 +88,18 @@ describe('ウォレットの疑似の実装', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('トランザクションの送信', () => {
+  it('送ったトランザクションの内容を検査できる', async () => {
+    const wallet = createWalletStub({ chainId: 5042002 });
+
+    const hash = await wallet.request({
+      method: 'eth_sendTransaction',
+      params: [{ from: account.address, to: '0x0077777d7eba4688bdef3e311b846f25870a19b9', data: '0x1234' }],
+    });
+
+    expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(wallet.sent).toHaveLength(1);
+    expect(wallet.sent[0]?.data).toBe('0x1234');
+  });
+});

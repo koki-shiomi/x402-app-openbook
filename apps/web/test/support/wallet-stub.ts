@@ -12,6 +12,13 @@ import { privateKeyToAccount } from 'viem/accounts';
 export const TEST_PRIVATE_KEY =
   '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 
+/** 疑似の実装が受け取ったトランザクション 1 件。 */
+export interface SentTransaction {
+  from?: string;
+  to?: string;
+  data?: string;
+}
+
 /** 疑似の実装の初期状態。 */
 export interface WalletStubOptions {
   /** 接続先のチェーン ID。 */
@@ -20,6 +27,8 @@ export interface WalletStubOptions {
   connected?: boolean;
   /** チェーンの追加の要求を受理するか。既定は受理する。 */
   acceptAddChain?: boolean;
+  /** 送ったトランザクションに対して返す取引の識別子。 */
+  transactionHash?: string;
 }
 
 /** EIP-1193 の要求 1 件。 */
@@ -33,6 +42,8 @@ export interface WalletStub {
   request(request: EthereumRequest): Promise<unknown>;
   /** テストから現在のチェーン ID を読む。 */
   readonly chainId: number;
+  /** テストから送られたトランザクションを検査する。 */
+  readonly sent: readonly SentTransaction[];
 }
 
 /**
@@ -47,10 +58,16 @@ export function createWalletStub(options: WalletStubOptions): WalletStub {
   let chainId = options.chainId;
   let connected = options.connected ?? true;
   const acceptAddChain = options.acceptAddChain ?? true;
+  const transactionHash = options.transactionHash ?? `0x${'ab'.repeat(32)}`;
+  const sent: SentTransaction[] = [];
 
   return {
     get chainId(): number {
       return chainId;
+    },
+
+    get sent(): readonly SentTransaction[] {
+      return sent;
     },
 
     async request({ method, params }: EthereumRequest): Promise<unknown> {
@@ -84,6 +101,15 @@ export function createWalletStub(options: WalletStubOptions): WalletStub {
             chainId = Number.parseInt(target, 16);
           }
           return null;
+        }
+
+        case 'eth_sendTransaction': {
+          const transaction = params?.[0] as SentTransaction | undefined;
+          if (transaction === undefined) {
+            throw new Error('トランザクションの内容がありません');
+          }
+          sent.push(transaction);
+          return transactionHash;
         }
 
         case 'eth_signTypedData_v4': {
