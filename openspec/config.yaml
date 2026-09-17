@@ -152,6 +152,23 @@ context: |
     残高があるだけでは `insufficient_balance` になる。成立の結果の `transaction`
     はチェーンのトランザクションハッシュではなく **Circle の決済 ID（UUID）** である
     （バッチで決済するため。2026-09-16 に実際の支払いで確認）
+  - Circle Gateway Wallet（`0x0077777d7eba4688bdef3e311b846f25870a19b9`）: 残高は
+    **預入者のアドレスごとに分別される**（`availableBalance(address token, address depositor)`。
+    3 つのアドレスが別々の残高を持つことを実測）。Circle の残高 API も
+    `sources: [{domain, depositor}]` とチェーン（domain）ごとに返し、Arc Testnet は
+    **domain 26**。統合残高は送金・ミントの機能であり、支払い元のチェーンを肩代わり
+    しない。公式の買い手向け手順も支払い前に domain 26 の残高を確認し、EIP-712 の
+    `chainId` を Arc に合わせるよう指示している。
+    **支払われた USDC は受取先の通常の残高ではなく Gateway 内の残高に入る**
+    （2026-09-16 の支払い後、刻印用 EOA の通常残高は増えず Gateway 内が 100000 になった）。
+    預け入れは 4 系統あり（[circlefin/evm-gateway-contracts](https://github.com/circlefin/evm-gateway-contracts)
+    の `src/modules/wallet/Deposits.sol`）、**事前の `approve` は必須ではない**。
+    実測したガスは `depositWithPermit`（EIP-2612）が 113,403、
+    `depositWithAuthorization`（EIP-3009）が 108,755。後者は nonce がランダムで
+    連番の競合がなく、内部で `receiveWithAuthorization` を呼ぶため受取先が
+    呼び出し元であることを要求し、署名を第三者が悪用できない。
+    `withdrawableBalance` は引き出しの待機期間を表す別の値で、支払いの可否の判定に
+    用いない。公式の買い手向け手順は `approve` + `deposit` の例のみを載せている
   - Arc Testnet: チェーン ID は `5042002`。公式ドキュメントの RPC は
     `https://rpc.testnet.arc.io`、viem の `arcTestnet` 定義の既定は
     `https://rpc.testnet.arc.network` で、**2026-09-14 時点で両方とも応答する**。
