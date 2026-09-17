@@ -98,6 +98,10 @@ export function createAdmobSource(
   const fetchImpl = options.fetchImpl ?? fetch;
   // 1 回の日次実行で当月内の各日が再収集されるため、トークンはソース内で使い回す。
   let cached: { accessToken: string; expiresAt: number } | undefined;
+  // アカウント情報（通貨・レポートタイムゾーン）は対象日によらず同じ値を返すため、
+  // トークンと同じく実行の中で使い回す。収集のたびに取得すると、宣言した
+  // 問い合わせ回数と実際が食い違う。
+  let account: PublisherAccount | undefined;
 
   /**
    * リフレッシュトークンからアクセストークンを得る。有効なものがあれば使い回す。
@@ -169,16 +173,29 @@ export function createAdmobSource(
     return (await response.json()) as T;
   }
 
+  /**
+   * アカウント情報を得る。取得済みであれば使い回す。
+   *
+   * @returns アカウント情報
+   * @throws {Error} 取得に失敗した場合
+   */
+  async function getAccount(): Promise<PublisherAccount> {
+    account ??= await callApi<PublisherAccount>('');
+
+    return account;
+  }
+
   return {
     id: 'admob',
     revisable: true,
     // 収益レポートを 1 回取得する。
     requestsPerCollection: 1,
-    // アクセストークンは実行の中で使い回すため、実行ごとに 1 回だけ取得する。
-    requestsPerRun: 1,
+    // アクセストークンとアカウント情報は実行の中で使い回すため、
+    // 実行ごとにそれぞれ 1 回ずつ取得する。
+    requestsPerRun: 2,
 
     async collect(date: string): Promise<CollectionResult> {
-      const account = await callApi<PublisherAccount>('');
+      const account = await getAccount();
       const reportDate = toReportDate(date);
       const report = await callApi<ReportMessage[]>('/networkReport:generate', {
         reportSpec: {

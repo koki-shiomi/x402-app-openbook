@@ -12,7 +12,7 @@ import { listAvailableRecords } from './api/listing.js';
 import { paidRecordMiddleware, serveRecord } from './api/paid-record.js';
 import { isAuthorized } from './auth.js';
 import type { CollectionSource, RunOptions } from './batch.js';
-import { RequestBudget } from './budget.js';
+import { isResourceLimitError, RequestBudget } from './budget.js';
 import { writeCollectionRun } from './runlog.js';
 import {
   buildCostSources,
@@ -39,17 +39,35 @@ function buildSources(env: Env, options: BuildSourcesOptions = {}): CollectionSo
  * 実行時の依存を組み立てる。
  *
  * 為替レートの取得失敗は例外にせず undefined を返し、呼び出し側で欠測として記録する。
+ * ただし実行環境の資源制約による中断は提供元の欠測ではないため、握りつぶさずに
+ * 呼び出し側へ伝える。詳細は specs/daily-batch/spec.md の
+ * 「実行環境の制約による失敗と提供元の欠測の区別」を参照。
+ *
+ * レートの取得も 1 回の実行の問い合わせ回数を消費するため、予算つきの取得関数を
+ * 受け取れるようにする。予算の外に置くと、上限を消費しながら記録にも見積もりにも
+ * 現れない。
  *
  * @param now 実行時刻（RFC 3339）
+ * @param options 取得の依存。`fetchImpl` を省くと既定の取得関数を用いる
  * @returns 日次実行の依存
  */
-function buildRunOptions(now: string): RunOptions {
+export function buildRunOptions(
+  now: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): RunOptions {
   return {
     now,
     async fetchRate(date: string): Promise<ExchangeRate | undefined> {
       try {
-        return await fetchUsdJpyRate(date, { now });
-      } catch {
+        return await fetchUsdJpyRate(date, {
+          now,
+          ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+        });
+      } catch (error) {
+        if (isResourceLimitError(error)) {
+          throw error;
+        }
+
         return undefined;
       }
     },
@@ -152,8 +170,9 @@ export default {
     }
 
     const budget = new RequestBudget(REQUEST_BUDGET);
-    const options = { ...buildRunOptions(now), budget };
-    const sources = buildSources(env, { fetchImpl: budget.wrap(fetch) });
+    const counted = budget.wrap(fetch);
+    const options = { ...buildRunOptions(now, { fetchImpl: counted }), budget };
+    const sources = buildSources(env, { fetchImpl: counted });
 
     await runCollection(env.RECORDS, sources, options, trigger);
   },

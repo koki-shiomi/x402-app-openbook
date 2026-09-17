@@ -102,10 +102,16 @@ context: |
     読み取り系エンドポイントでは返らない。API キーの権限は `full_access` と
     `sending_access`（送信のみ）の 2 種類で読み取り専用はなく、送信数の取得には
     `full_access` が必要
-  - Supabase: `GET /v1/organizations/{slug}` が `plan`（`free` など）を返し、
-    `GET /v1/projects/{ref}/billing/addons` の `selected_addons` が空なら有料アドオン
-    （Custom Domain $10/月、Compute Instance など）は未適用。**read-only の PAT で
-    両方とも取得できる**ことを確認済み。使用量を返すエンドポイントは存在しない
+  - Supabase: `GET /v1/organizations/{slug}` が `plan`（`free` など）を返す。
+    **read-only の PAT で取得できる**ことを確認済み。使用量を返すエンドポイントは
+    存在しない。課金は**組織を単位**として行われ（公式ドキュメント "Supabase bills
+    separately for each organization. Each organization has its own subscription,
+    including a unique subscription plan"）、課金アドオン（Custom Domain $10/月、
+    Compute Instance など）は**有料プランのプロジェクトにのみ適用できる**
+    （Custom Domain の項 "These are available as a paid add-on for projects on a
+    paid plan"）。したがって組織のプランが `free` であればアドオンによる費用は
+    生じず、`GET /v1/projects/{ref}/billing/addons` を個別に確認する必要はない。
+    プロジェクトごとの確認はプロジェクト数に応じて問い合わせ回数が変わるため行わない
   - AdMob: `accounts.networkReport` で `DATE` / `WEEK` / `MONTH` のディメンションと
     任意の `dateRange` を指定でき、日次・週次・月次のいずれの粒度でも取得できる。
     ただし取得できるのは `ESTIMATED_EARNINGS`（推定値）のみで、API v1 には
@@ -222,10 +228,19 @@ context: |
     - CPU 時間は収集の 1 本目が 90.7ms、2 本目 9.2ms、3 本目 9.9ms、刻印が 73.4ms。
       **90ms を超えても打ち切られない**
     - 外部への問い合わせ回数は 44 / 0 / 0（予算 45）。打ち切りは発生していない
-    - **見積もりは実測を下回る**。同じ内容に対する見積もりは 35 で実測は 44 であり、
-      差の 9 件の出所は未特定。対象期間の全日にレコードがある定常状態の見積もりは
-      収集の 1 本目で 44、予算 45 に対して余裕が 1 件しかない。実測との差を踏まえると
-      レコードが増えた時点で予算に達し、担当日の一部が再収集されなくなる
+    - **見積もりが実測を 9 件下回っていた**。原因は 2 つで、いずれも 2026-09-17 に
+      `reduce-collection-requests` で修正した。AdMob が 1 回と宣言しながら
+      アカウント情報とレポートで 2 回呼んでいたこと（9 回の収集で +9）、および
+      Supabase が 3 回と宣言しながら「2 + プロジェクト数」であったこと。
+      加えて為替レートの取得が予算を通っておらず、消費されているのに
+      `requestsUsed` に現れていなかった（真の消費は 45 件）
+  - 取得元ごとの外部への問い合わせ回数（`reduce-collection-requests` 適用後）:
+    Cloudflare 3・Supabase 1・Claude 1・Resend 1・AdMob 1（いずれも収集 1 回あたり）。
+    AdMob はアクセストークンとアカウント情報を実行ごとに 1 回ずつ取得する（計 2 件）。
+    為替レートは前日の収集で 1 件。遡及可能日数は Cloudflare 1 日・Supabase 1 日・
+    Resend 29 日・Claude と AdMob は無制限。定常状態（対象期間の全日にレコードが
+    ある状態）の見積もりは、担当範囲を「前日 + 2〜12 日前 / 13〜25 日前 /
+    26〜40 日前」としたとき 43 / 41 / 36 で、予算 45 に収まる
 
   ## ドキュメント方針
 

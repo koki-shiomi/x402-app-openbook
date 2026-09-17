@@ -23,12 +23,13 @@ export interface CollectionTrigger {
  *
  * 担当日数を均等にしないのは、対象日ごとの問い合わせ回数が区間で変わるためである。
  * 2〜29 日前は Resend が遡及できるため 1 日あたり 3 件、30 日前より古い日は
- * Claude と AdMob のみで 2 件になる。均等に分けると最初の実行が予算を超える。
+ * Claude と AdMob のみで 2 件になる。加えて最初の実行は前日の収集と為替レートの
+ * 取得を担う。均等に分けると最初の実行が予算を超える。
  */
 export const COLLECTION_TRIGGERS: readonly CollectionTrigger[] = [
   { cron: '0 6 * * *', collectPreviousDay: true, slice: { from: 2, to: 12 } },
-  { cron: '20 6 * * *', collectPreviousDay: false, slice: { from: 13, to: 26 } },
-  { cron: '40 6 * * *', collectPreviousDay: false, slice: { from: 27, to: 40 } },
+  { cron: '20 6 * * *', collectPreviousDay: false, slice: { from: 13, to: 25 } },
+  { cron: '40 6 * * *', collectPreviousDay: false, slice: { from: 26, to: 40 } },
 ];
 
 /**

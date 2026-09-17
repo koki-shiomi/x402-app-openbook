@@ -6,13 +6,15 @@ import type { SupabaseConfig } from './config.js';
 /**
  * Supabase の費用収集。
  *
- * 課金額と使用量を返す API がないため、組織プランと課金アドオンの有無で
- * 「費用が発生していないこと」を確認する。詳細は
- * specs/cost-collection/spec.md の「Supabase 費用のプラン確認による裏付け」を参照。
+ * 課金額と使用量を返す API がないため、組織のプランで「費用が発生していないこと」
+ * を確認する。課金は組織を単位として行われ、課金アドオンは有料プランのプロジェクト
+ * にのみ適用できるため、プランが無料であればアドオンによる費用は生じない。詳細は
+ * specs/cost-collection/spec.md の
+ * 「Supabase 費用の組織プラン確認による裏付け」を参照。
  *
- * プランとアドオンは現在の状態しか返さず、過去日の状態を取得する手段がない。
- * 過去日に現在のプランを適用すると、その日の実態と異なる根拠を記録することに
- * なるため、過去日は取得できないものとして扱う。
+ * プランは現在の状態しか返さず、過去日の状態を取得する手段がない。過去日に現在の
+ * プランを適用すると、その日の実態と異なる根拠を記録することになるため、過去日は
+ * 取得できないものとして扱う。
  */
 
 const API_BASE = 'https://api.supabase.com/v1';
@@ -23,12 +25,6 @@ const API_BASE = 'https://api.supabase.com/v1';
  * 日次バッチは前日を対象に実行するため、当日と前日までを取得可能とする。
  */
 const REACHABLE_DAYS = 1;
-
-/** プロジェクト 1 件。 */
-interface Project {
-  ref: string;
-  organization_slug: string;
-}
 
 /** Supabase 収集ソースの依存。 */
 export interface SupabaseSourceOptions {
@@ -76,8 +72,8 @@ export function createSupabaseSource(
   return {
     id: 'supabase',
     revisable: false,
-    // 組織とプロジェクト一覧に加え、対象プロジェクト 1 件のアドオンを取得する。
-    requestsPerCollection: 3,
+    // 組織のプランを 1 回取得する。プロジェクト数に依存させない。
+    requestsPerCollection: 1,
 
     canCollect(date: string, now: string): boolean {
       const limit = new Date(now);
@@ -99,28 +95,6 @@ export function createSupabaseSource(
         );
       }
 
-      const projects = await callApi<Project[]>(fetchImpl, config, 'projects');
-      const targets = projects.filter(
-        (project) => project.organization_slug === config.orgSlug,
-      );
-
-      const addons: Record<string, unknown[]> = {};
-      for (const project of targets) {
-        const result = await callApi<{ selected_addons?: unknown[] }>(
-          fetchImpl,
-          config,
-          `projects/${project.ref}/billing/addons`,
-        );
-        addons[project.ref] = result.selected_addons ?? [];
-      }
-
-      const applied = Object.values(addons).flat();
-      if (applied.length > 0) {
-        throw new Error(
-          `課金アドオンが ${applied.length} 件適用されているため 0 円として記録できません`,
-        );
-      }
-
       const entry: Entry = {
         source: 'supabase',
         category: 'plan',
@@ -130,7 +104,7 @@ export function createSupabaseSource(
         amount: roundHalfUp('0', CURRENCY_SCALES.JPY),
         amountJpy: roundHalfUp('0', CURRENCY_SCALES.JPY),
         basis: {
-          description: `プラン free、${targets.length} プロジェクトすべてで課金アドオン 0 件を確認`,
+          description: `組織のプランが free であることを確認`,
           plan: organization.plan,
         },
       };
@@ -138,7 +112,7 @@ export function createSupabaseSource(
       return {
         costs: [entry],
         revenues: [],
-        raw: { organization, addons },
+        raw: { organization },
       };
     },
   };

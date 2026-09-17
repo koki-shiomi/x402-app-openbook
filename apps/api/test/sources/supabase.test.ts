@@ -2,41 +2,60 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createSupabaseSource } from '../../src/sources/supabase.js';
 
+/**
+ * Supabase の費用の裏付け。
+ *
+ * 課金は組織を単位として行われ、課金アドオンは有料プランのプロジェクトにのみ
+ * 適用できる。組織のプランが無料であることを確認できれば、アドオンによる費用は
+ * 生じない。プロジェクトごとの確認は、プロジェクト数に応じて問い合わせ回数が
+ * 変わるため行わない。詳細は specs/cost-collection/spec.md の
+ * 「Supabase 費用の組織プラン確認による裏付け」を参照。
+ */
+
 const CONFIG = { pat: 'sbp_x', orgSlug: 'org-1' };
 const NOW = '2026-09-09T06:00:00Z';
 
-/** URL ごとに応答を返すフェッチ関数を作る。 */
-function stubFetch(routes: Record<string, unknown>) {
+/** 組織の応答と、必要ならプロジェクト一覧を返すフェッチ関数を作る。 */
+function stubFetch(options: { plan?: string; projects?: number } = {}) {
   const calls: string[] = [];
   const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     calls.push(url);
-    // 部分一致では /v1/projects が addons の URL にも当たるため、
-    // より具体的な（長い）ルートを優先する。
-    const key = Object.keys(routes)
-      .sort((a, b) => b.length - a.length)
-      .find((route) => url.includes(route));
-    return key === undefined
-      ? new Response('{}', { status: 404 })
-      : new Response(JSON.stringify(routes[key]), { status: 200 });
+
+    if (url.includes('/organizations/')) {
+      return new Response(
+        JSON.stringify({ id: 'org-1', name: 'sizet', plan: options.plan ?? 'free' }),
+        { status: 200 },
+      );
+    }
+
+    if (url.includes('/billing/addons')) {
+      return new Response(JSON.stringify({ selected_addons: [] }), { status: 200 });
+    }
+
+    if (url.includes('/projects')) {
+      const count = options.projects ?? 2;
+      return new Response(
+        JSON.stringify(
+          Array.from({ length: count }, (_, index) => ({
+            ref: `p${index + 1}`,
+            organization_slug: 'org-1',
+            name: `project-${index + 1}`,
+          })),
+        ),
+        { status: 200 },
+      );
+    }
+
+    return new Response('{}', { status: 404 });
   }) as unknown as typeof fetch;
 
   return { fetchImpl, calls };
 }
 
-/** 実測した無料プランの応答。 */
-const FREE_TIER = {
-  '/v1/projects': [
-    { ref: 'p1', organization_slug: 'org-1', name: 'sizet' },
-    { ref: 'p2', organization_slug: 'org-1', name: 'sizet-alt' },
-  ],
-  '/v1/organizations/org-1': { id: 'org-1', name: 'sizet', plan: 'free' },
-  '/billing/addons': { selected_addons: [] },
-};
-
-describe('無料プランかつアドオンなし', () => {
+describe('無料プラン', () => {
   it('金額 0 の estimated エントリになる', async () => {
-    const { fetchImpl } = stubFetch(FREE_TIER);
+    const { fetchImpl } = stubFetch();
     const source = createSupabaseSource(CONFIG, { fetchImpl });
 
     const [entry] = (await source.collect('2026-09-08')).costs;
@@ -51,38 +70,45 @@ describe('無料プランかつアドオンなし', () => {
     });
   });
 
-  it('プラン名とアドオンの確認結果が算出根拠に含まれる', async () => {
-    const { fetchImpl } = stubFetch(FREE_TIER);
+  it('プラン名が算出根拠に含まれる', async () => {
+    const { fetchImpl } = stubFetch();
     const source = createSupabaseSource(CONFIG, { fetchImpl });
 
     const [entry] = (await source.collect('2026-09-08')).costs;
 
     expect(entry?.basis?.plan).toBe('free');
-    expect(entry?.basis?.description).toMatch(/アドオン/);
+    expect(entry?.basis?.description).toMatch(/free/);
+  });
+
+  it('課金アドオンを問い合わせない', async () => {
+    const { fetchImpl, calls } = stubFetch();
+    const source = createSupabaseSource(CONFIG, { fetchImpl });
+
+    await source.collect('2026-09-08');
+
+    expect(calls.some((url) => url.includes('/billing/addons'))).toBe(false);
+    expect(calls.some((url) => url.includes('/projects'))).toBe(false);
   });
 });
 
-describe('費用が発生している場合', () => {
-  it('有料プランなら 0 円として記録しない', async () => {
-    const { fetchImpl } = stubFetch({
-      ...FREE_TIER,
-      '/v1/organizations/org-1': { id: 'org-1', name: 'sizet', plan: 'pro' },
-    });
+describe('無料ではないプラン', () => {
+  it('0 円として記録しない', async () => {
+    const { fetchImpl } = stubFetch({ plan: 'pro' });
     const source = createSupabaseSource(CONFIG, { fetchImpl });
 
     await expect(source.collect('2026-09-08')).rejects.toThrow(/プラン/);
   });
+});
 
-  it('課金アドオンが適用されていれば 0 円として記録しない', async () => {
-    const { fetchImpl } = stubFetch({
-      ...FREE_TIER,
-      '/billing/addons': {
-        selected_addons: [{ type: 'compute_instance', variant: { id: 'ci_micro' } }],
-      },
-    });
-    const source = createSupabaseSource(CONFIG, { fetchImpl });
+describe('プロジェクト数の異なる組織', () => {
+  it('問い合わせ回数が変わらない', async () => {
+    const few = stubFetch({ projects: 1 });
+    const many = stubFetch({ projects: 5 });
 
-    await expect(source.collect('2026-09-08')).rejects.toThrow(/アドオン/);
+    await createSupabaseSource(CONFIG, { fetchImpl: few.fetchImpl }).collect('2026-09-08');
+    await createSupabaseSource(CONFIG, { fetchImpl: many.fetchImpl }).collect('2026-09-08');
+
+    expect(many.calls).toHaveLength(few.calls.length);
   });
 });
 
@@ -103,12 +129,12 @@ describe('過去日の扱い', () => {
 });
 
 describe('生応答の保存', () => {
-  it('プランとアドオンの応答をまとめて返す', async () => {
-    const { fetchImpl } = stubFetch(FREE_TIER);
+  it('組織の応答を返す', async () => {
+    const { fetchImpl } = stubFetch();
     const source = createSupabaseSource(CONFIG, { fetchImpl });
 
     const raw = (await source.collect('2026-09-08')).raw as Record<string, unknown>;
 
-    expect(Object.keys(raw).sort()).toEqual(['addons', 'organization']);
+    expect(Object.keys(raw)).toEqual(['organization']);
   });
 });
