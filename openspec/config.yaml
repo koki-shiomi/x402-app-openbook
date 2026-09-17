@@ -78,7 +78,11 @@ context: |
     扱うと費用を 100 倍に誤って公開するため、必ず 1/100 して USD に直す。
     利用には Admin API キー（`sk-ant-admin01-`）が必要で、正式な組織を作成しないと
     発行できない。個人アカウントでは組織スコープの個人キーもサービスアカウントキーも
-    403 `Missing permissions` になる。Admin キーはスコープを選択できず全権限を持つ
+    403 `Missing permissions` になる。Admin キーはスコープを選択できず全権限を持つ。
+    **当日（まだ閉じていない UTC 暦日）は問い合わせられない**。`starting_at` に
+    当日を含めると、範囲が正しくても `Invalid date range: ending date must be
+    after starting date` という無関係に見えるエラーで拒まれる（2026-09-17 に実測）。
+    日次バッチが前日を対象にしているのはこの制約に沿っている
   - Cloudflare: 費用の確認は 3 つのエンドポイントを併用する。
     `GET /accounts/{id}/subscriptions` が契約中のサブスクリプションを返す（Workers
     Paid は月額 $5）。**R2 を有効にすると価格 0 USD の `R2 Paid`（`rate_plan.id` が
