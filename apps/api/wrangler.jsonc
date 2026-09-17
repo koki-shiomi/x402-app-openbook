@@ -5,6 +5,13 @@
   "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
 
+  // 画面の静的な資産。資産が先に照合され、該当がなければ Worker が動くため、
+  // /v1/* は従来どおり Worker へ届く。資産側に v1 で始まる名前を置かない。
+  // API と同一のオリジンで配ることで、有料 API に CORS の設定を加えずに済む。
+  "assets": {
+    "directory": "../web/dist"
+  },
+
   // 日次レコード・生応答・実行記録の保存先。保存物がそのままハッシュ対象になる。
   "r2_buckets": [
     {
