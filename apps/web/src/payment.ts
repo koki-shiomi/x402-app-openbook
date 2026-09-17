@@ -1,5 +1,6 @@
 import type { PaymentTerms } from './api.js';
 import type { EthereumProvider } from './preconditions.js';
+import { toSignTypedDataPayload } from './typed-data.js';
 
 /**
  * 支払いの署名の組み立て。
@@ -104,12 +105,12 @@ export async function signPayment(
   ethereum: EthereumProvider,
   built: BuiltAuthorization,
 ): Promise<string> {
-  const payload = JSON.stringify({
-    domain: built.domain,
-    types: built.types,
-    primaryType: 'TransferWithAuthorization',
-    message: built.authorization,
-  });
+  const payload = toSignTypedDataPayload(
+    built.domain,
+    built.types,
+    'TransferWithAuthorization',
+    { ...built.authorization },
+  );
 
   return (await ethereum.request({
     method: 'eth_signTypedData_v4',

@@ -146,7 +146,21 @@ function parseTypedData(payload: string): Parameters<
     message: Record<string, unknown>;
   };
 
-  const fields = parsed.types[parsed.primaryType] ?? [];
+  // 実物のウォレットは `types` の `EIP712Domain` からドメインを符号化する。
+  // 欠けていると別のドメインで署名され、コントラクトが署名を拒む。
+  // 疑似の実装でも同じ要求を課し、この取り違えをテストで捕まえる。
+  if (parsed.types['EIP712Domain'] === undefined) {
+    throw new Error('types に EIP712Domain がありません');
+  }
+
+  const domainFields = parsed.types['EIP712Domain'].map((field) => field.name).sort();
+  const actualFields = Object.keys(parsed.domain).sort();
+  if (JSON.stringify(domainFields) !== JSON.stringify(actualFields)) {
+    throw new Error('EIP712Domain の項目がドメインの内容と一致しません');
+  }
+
+  const { EIP712Domain: _domainType, ...signedTypes } = parsed.types;
+  const fields = signedTypes[parsed.primaryType] ?? [];
   const message: Record<string, unknown> = { ...parsed.message };
 
   for (const field of fields) {
@@ -157,7 +171,7 @@ function parseTypedData(payload: string): Parameters<
 
   return {
     domain: parsed.domain,
-    types: parsed.types,
+    types: signedTypes,
     primaryType: parsed.primaryType,
     message,
   } as Parameters<ReturnType<typeof privateKeyToAccount>['signTypedData']>[0];

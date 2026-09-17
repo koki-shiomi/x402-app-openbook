@@ -42,6 +42,12 @@ describe('ウォレットの疑似の実装', () => {
         verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9' as const,
       },
       types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+        ],
         TransferWithAuthorization: [
           { name: 'from', type: 'address' },
           { name: 'to', type: 'address' },
@@ -69,7 +75,11 @@ describe('ウォレットの疑似の実装', () => {
       )],
     });
 
-    expect(viaStub).toBe(await account.signTypedData(typedData));
+    // 局所アカウントの署名は EIP712Domain を型に含めない。
+    const { EIP712Domain: _omit, ...signedTypes } = typedData.types;
+    expect(viaStub).toBe(
+      await account.signTypedData({ ...typedData, types: signedTypes }),
+    );
   });
 
   it('接続していなければアドレスを返さない', async () => {

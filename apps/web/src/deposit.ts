@@ -5,6 +5,7 @@ import { GATEWAY_WALLET_ABI } from '@openbook/shared';
 
 import { ARC_RPC_URL, GATEWAY_WALLET, PAYMENT_ASSET } from './config.js';
 import type { EthereumProvider } from './preconditions.js';
+import { toSignTypedDataPayload } from './typed-data.js';
 
 /**
  * 決済の取次へ預け入れた残高の照会と、画面からの預け入れ。
@@ -162,12 +163,12 @@ export async function deposit(value: bigint, deps: DepositDeps): Promise<Deposit
     method: 'eth_signTypedData_v4',
     params: [
       deps.address,
-      JSON.stringify({
-        domain: built.domain,
-        types: built.types,
-        primaryType: built.primaryType,
-        message: built.authorization,
-      }),
+      toSignTypedDataPayload(
+        built.domain,
+        built.types,
+        built.primaryType,
+        { ...built.authorization },
+      ),
     ],
   })) as `0x${string}`;
 
