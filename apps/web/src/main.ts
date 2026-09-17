@@ -1,3 +1,5 @@
+import { mount } from './app.js';
+
 /**
  * 画面の入口。
  *
@@ -5,4 +7,8 @@
  * 取得経路は API そのものであり、この画面はその内容を確かめるためのものとする。
  * 詳細は specs/public-dashboard/spec.md を参照。
  */
-export {};
+const container = document.querySelector<HTMLElement>('#app');
+
+if (container !== null) {
+  void mount(container);
+}
