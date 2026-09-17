@@ -27,7 +27,7 @@ const RECORD: DailyRecord = {
       currency: 'USD',
       amount: '1.007100',
       amountJpy: '151.07',
-      exchangeRate: { pair: 'USD/JPY', rate: '150.00', publishedOn: '2026-09-13' },
+      exchangeRate: '150.00',
     },
     {
       source: 'resend',
