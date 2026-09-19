@@ -14,6 +14,7 @@
 | Supabase | 読み取り専用のアクセストークン |
 | Resend | `full_access` のキー（読み取り専用の権限が提供されていない） |
 | Claude | Admin キー（権限を絞る手段が提供されていない） |
+| AdMob | `admob.report` スコープの OAuth リフレッシュトークン（詳細は「AdMob の認証方式と権限」） |
 
 Cloudflare と Supabase については、必要なエンドポイントがすべて読み取り権限のみで取得できることを実測で確認している。
 
