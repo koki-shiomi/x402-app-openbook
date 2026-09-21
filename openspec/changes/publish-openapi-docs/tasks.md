@@ -24,5 +24,5 @@
 
 - [x] 5.0 （本チェンジの範囲外の前提の修正）`apps/api` のテストが並列実行時に稀に待ち時間の上限を超える問題を解消する。既定の 5 秒に対し、刻印の署名などが負荷しだいで 10 秒近くかかることを実測しているため、`apps/api/vitest.config.ts` に上限を明示する。本チェンジ以前から存在する不安定さであり、`apps/api` には本チェンジの変更を加えていない
 - [x] 5.1 `pnpm -r typecheck` と `pnpm -r test` がすべて成功することを確認する
-- [ ] 5.2 デプロイし、`GET /openapi.json` が 200 でドキュメントを返すこと、`GET /docs` が画面を表示すること、既存の `GET /v1/records`・`GET /v1/records/{date}`・`GET /health` の挙動が変わっていないことを本番で確認する
-- [ ] 5.3 本番の `/docs` を実機のブラウザで開き、`GET /v1/records` の一覧が Scalar の画面から実行できることを確認する
+- [x] 5.2 デプロイし、`GET /openapi.json` が 200 でドキュメントを返すこと、`GET /docs` が画面を表示すること、既存の `GET /v1/records`・`GET /v1/records/{date}`・`GET /health` の挙動が変わっていないことを本番で確認する
+- [x] 5.3 本番の `/docs` を実機のブラウザで開き、`GET /v1/records` の一覧が Scalar の画面から実行できることを確認する
