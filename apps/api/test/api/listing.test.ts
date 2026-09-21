@@ -9,9 +9,16 @@ beforeEach(async () => {
   await Promise.all(listed.objects.map((object) => env.RECORDS.delete(object.key)));
 });
 
-/** 対象日を刻印済みにする（レコードの内容は問わない）。 */
+/**
+ * 対象日を刻印済みにする（レコードの内容は問わない）。
+ *
+ * 一覧はレコードと刻印の最新リビジョンの一致で判定するため、刻印だけでなく
+ * 対応するレコードも置く。刻印だけがある状態は本番では生じない。
+ */
 async function putAnchored(date: string, revision: number): Promise<void> {
-  await env.RECORDS.put(`anchors/${date}/${String(revision).padStart(3, '0')}.json`, '{}');
+  const name = `${String(revision).padStart(3, '0')}.json`;
+  await env.RECORDS.put(`records/${date}/${name}`, '{}');
+  await env.RECORDS.put(`anchors/${date}/${name}`, '{}');
 }
 
 describe('取得可能な日付の一覧', () => {

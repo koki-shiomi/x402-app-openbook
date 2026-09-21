@@ -6,6 +6,7 @@ import { createRecord } from '@openbook/shared';
 import worker from '../src/index.js';
 import { readAnchorRuns } from '../src/anchor/store.js';
 import { readCollectionRuns, readRun } from '../src/runlog.js';
+import { recollectionDates } from '../src/schedule.js';
 import { ANCHOR_TRIGGER, COLLECTION_TRIGGERS } from '../src/triggers.js';
 import { putRecord } from '../src/storage.js';
 
@@ -47,9 +48,28 @@ describe('定期実行の分岐', () => {
     const runs = await readCollectionRuns(env.RECORDS);
     const byTrigger = new Map(runs.map((run) => [run.trigger, run.dates]));
 
-    expect(byTrigger.get(COLLECTION_TRIGGERS[0]!.cron)).toEqual(['2026-09-17']);
-    expect(byTrigger.get(COLLECTION_TRIGGERS[1]!.cron)).toEqual(['2026-09-05']);
-    expect(byTrigger.get(COLLECTION_TRIGGERS[2]!.cron)).toEqual(['2026-08-21']);
+    /** 担当範囲を対象日の区間へ直す。 */
+    function span(trigger: (typeof COLLECTION_TRIGGERS)[number]) {
+      const dates = recollectionDates(NOW, trigger.slice);
+      return { earliest: dates[0]!, latest: dates.at(-1)! };
+    }
+
+    // レコードを置いた日はそれぞれの担当が扱い、他の担当は扱わない。
+    // （欠落した日の埋め戻しも起きるため、扱った日の集合は完全一致では確かめない）
+    const seeded = ['2026-09-17', '2026-09-05', '2026-08-21'];
+    COLLECTION_TRIGGERS.forEach((trigger, index) => {
+      const dates = byTrigger.get(trigger.cron) ?? [];
+      const { earliest, latest } = span(trigger);
+
+      expect(dates).toContain(seeded[index]);
+      for (const other of seeded.filter((date) => date !== seeded[index])) {
+        expect(dates).not.toContain(other);
+      }
+      // 扱った日がすべて自身の担当範囲に収まる。
+      for (const date of dates) {
+        expect(date >= earliest && date <= latest).toBe(true);
+      }
+    });
   });
 
   it('前日の収集は最初の定期実行だけが行う', async () => {

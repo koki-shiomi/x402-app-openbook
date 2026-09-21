@@ -1,7 +1,8 @@
-import { RECOLLECTION_DAYS, type DailyRecord } from '@openbook/shared';
+import { BACKFILL_DAYS, RECOLLECTION_DAYS, type DailyRecord } from '@openbook/shared';
 
 import { runDaily, type CollectionSource, type RunOptions } from './batch.js';
 import { isResourceLimitError, RequestBudget } from './budget.js';
+import { latestRevisionByPrefix } from './r2-listing.js';
 import { writeCollectionRun } from './runlog.js';
 import { getRecord } from './storage.js';
 
@@ -120,6 +121,53 @@ export function recollectionDates(
   return dates;
 }
 
+/** 埋め戻しの対象となる対象日の範囲。 */
+interface BackfillRange {
+  /** 稼働期間の始まり。レコードが存在する最も古い対象日。 */
+  from: string;
+  /** 埋め戻しの範囲の始まり。実行時点から `BACKFILL_DAYS` 日前。 */
+  earliest: string;
+}
+
+/**
+ * 埋め戻しの対象となる対象日の範囲を求める。
+ *
+ * 稼働期間の始まりを設定値で持たず保存物から導くのは、設定値がずれたときに
+ * どちらが正しいか判断できなくなるためである。保存物から導けば常に実態と一致する。
+ *
+ * @param bucket 取得元の R2 バケット
+ * @param now 実行時刻（RFC 3339）
+ * @returns 埋め戻しの範囲。レコードが 1 件もなければ undefined
+ */
+async function resolveBackfillRange(
+  bucket: R2Bucket,
+  now: string,
+): Promise<BackfillRange | undefined> {
+  const dates = [...(await latestRevisionByPrefix(bucket, 'records/')).keys()];
+  if (dates.length === 0) {
+    return undefined;
+  }
+
+  const earliest = new Date(`${now.slice(0, 10)}T00:00:00Z`);
+  earliest.setUTCDate(earliest.getUTCDate() - BACKFILL_DAYS);
+
+  return {
+    from: dates.reduce((oldest, date) => (date < oldest ? date : oldest)),
+    earliest: earliest.toISOString().slice(0, 10),
+  };
+}
+
+/**
+ * ある対象日が埋め戻しの対象かを判定する。
+ *
+ * @param date 対象日（YYYY-MM-DD 形式）
+ * @param range 埋め戻しの範囲
+ * @returns 稼働期間内かつ埋め戻しの範囲内であれば true
+ */
+function isBackfillable(date: string, range: BackfillRange | undefined): boolean {
+  return range !== undefined && date >= range.from && date >= range.earliest;
+}
+
 /** 再収集の依存。 */
 export interface RecollectionOptions extends RunOptions {
   /** 1 回の実行で使える問い合わせ回数の予算。省略時は数えない。 */
@@ -185,8 +233,10 @@ export function estimateRequests(
  * さらに提供元は月末に無効なクリックとインプレッションの調整を行い、過去日の値を
  * 遡って変える。前日分を 1 回取得しただけでは、これらの変動が反映されない。
  *
- * レコードがない日は収集しない。レコードがない日には収集を開始する前の日が含まれ、
- * 作成すると稼働開始前の日を遡って取り込むことになる。
+ * レコードがない日は、稼働期間内かつ埋め戻しの範囲内であれば収集する。収集が
+ * 中断した日を以後の実行が拾えるようにするためである。稼働期間より前の日を
+ * 作らないのは、収集を開始する前の日を遡って取り込まないためである。範囲を
+ * 直近に区切る理由は `BACKFILL_DAYS` の説明を参照。
  *
  * 予算が渡された場合、次の対象日を処理する余地がなくなった時点で打ち切る。
  * 上限に達してから失敗すると、提供元の欠測と区別がつかない形で公開データに残る。
@@ -203,15 +253,18 @@ export async function recollectRecent(
 ): Promise<RecollectionOutcome> {
   const outcome: RecollectionOutcome = { updated: [], processed: [], interrupted: [] };
 
+  const backfill = await resolveBackfillRange(bucket, options.now);
+
   for (const date of recollectionDates(options.now, options.slice)) {
     const existing = await readLatest(bucket, date);
-    if (existing === null) {
+    if (existing === null && !isBackfillable(date, backfill)) {
       continue;
     }
 
     // レートが記録済みの日は取得し直さないため、その分を見積もりから除く。
+    // レコードがない日は再利用できるレートもないため、取得するものとして数える。
     const needed = estimateRequests(sources, date, options.now, {
-      fetchesRate: existing.exchangeRates.length === 0,
+      fetchesRate: existing === null || existing.exchangeRates.length === 0,
     });
     if (options.budget !== undefined && !options.budget.canAfford(needed)) {
       outcome.stoppedAt = date;
@@ -222,7 +275,7 @@ export async function recollectRecent(
       const { record: after } = await collectWithinReach(bucket, sources, date, options);
       outcome.processed.push(date);
 
-      if (after !== null && after.revision !== existing.revision) {
+      if (after !== null && after.revision !== existing?.revision) {
         outcome.updated.push(date);
       }
     } catch (error) {

@@ -15,6 +15,7 @@ export {
   subtractDecimals,
 } from './decimal.js';
 export {
+  BACKFILL_DAYS,
   isWithinRevisionThreshold,
   RECOLLECTION_DAYS,
   REVISION_THRESHOLD,

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { validateRecord, type DailyRecord } from '@openbook/shared';
 
 import { runDaily, type CollectionSource } from '../src/batch.js';
+import { RequestBudget } from '../src/budget.js';
 import {
   collectWithinReach,
   previousDay,
@@ -97,10 +98,13 @@ describe('過去日の再収集', () => {
 
     await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
 
-    expect(calls).toEqual(['2026-07-30']);
+    // 2026-07-29 は対象期間の外にあり、再収集されない。
+    // （2026-07-30 以降の欠落は埋め戻しの対象になるため、完全一致では確かめない）
+    expect(calls).not.toContain('2026-07-29');
+    expect(calls).toContain('2026-07-30');
   });
 
-  it('レコードがない対象期間内の日は収集されず、レコードも作成されない', async () => {
+  it('稼働期間より前と対象期間外の日には、レコードが作成されない', async () => {
     const amounts = new Map([['2026-09-05', '10.00']]);
     const base = mutableSource(amounts);
     const calls: string[] = [];
@@ -116,8 +120,10 @@ describe('過去日の再収集', () => {
 
     await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
 
-    expect(calls).toEqual(['2026-09-05']);
+    expect(calls).toContain('2026-09-05');
+    // 最も古いレコード（2026-09-05）より前は稼働期間の外にあたる。
     expect(await getRecord(env.RECORDS, '2026-09-03')).toBeNull();
+    // 前日（2026-09-07）は再収集の対象期間に含まれない。最初の定期実行が担当する。
     expect(await getRecord(env.RECORDS, '2026-09-07')).toBeNull();
   });
 
@@ -395,5 +401,108 @@ describe('遡及可能期間外の収集ソースの引き継ぎ', () => {
     expect(limited.calls).toEqual([]);
     expect(result.skipped).toEqual(['limited']);
     expect(await env.RECORDS.head(recordKey('2026-09-05', 2))).toBeNull();
+  });
+});
+
+describe('欠落した日の埋め戻し', () => {
+  /** 呼ばれた対象日を記録する収集ソース。 */
+  function recordingSource() {
+    const base = mutableSource(new Map());
+    const calls: string[] = [];
+    const source: CollectionSource = {
+      ...base,
+      collect(date) {
+        calls.push(date);
+        return base.collect(date);
+      },
+    };
+
+    return { source, calls };
+  }
+
+  it('稼働期間内かつ埋め戻しの範囲内で欠落した日が収集される', async () => {
+    const { source, calls } = recordingSource();
+    // 稼働開始を 2026-09-01 とし、2026-09-05 だけレコードがない状態を作る。
+    await runDaily(env.RECORDS, [source], '2026-09-01', { ...OPTIONS, now: '2026-09-02T06:00:00Z' });
+    await runDaily(env.RECORDS, [source], '2026-09-06', { ...OPTIONS, now: '2026-09-07T06:00:00Z' });
+    calls.length = 0;
+
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).toContain('2026-09-05');
+    expect(await getRecord(env.RECORDS, '2026-09-05')).not.toBeNull();
+  });
+
+  it('稼働期間より前の日は収集されない', async () => {
+    const { source, calls } = recordingSource();
+    // 最も古いレコードは 2026-09-05。それより前にレコードは作らない。
+    await runDaily(env.RECORDS, [source], '2026-09-05', { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
+    calls.length = 0;
+
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).not.toContain('2026-09-04');
+    expect(await getRecord(env.RECORDS, '2026-09-04')).toBeNull();
+  });
+
+  it('埋め戻しの範囲より古い欠落は収集されない', async () => {
+    const { source, calls } = recordingSource();
+    // 稼働開始を 2026-08-20 とし、2026-08-25（実行時点から 14 日前）を欠落させる。
+    await runDaily(env.RECORDS, [source], '2026-08-20', { ...OPTIONS, now: '2026-08-21T06:00:00Z' });
+    await runDaily(env.RECORDS, [source], '2026-09-06', { ...OPTIONS, now: '2026-09-07T06:00:00Z' });
+    calls.length = 0;
+
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).not.toContain('2026-08-25');
+    expect(await getRecord(env.RECORDS, '2026-08-25')).toBeNull();
+  });
+
+  it('中断した前日が翌日の実行で拾われる', async () => {
+    const { source, calls } = recordingSource();
+    // 2026-09-06 の収集が中断してレコードがない状態を、翌日の実行が拾う。
+    await runDaily(env.RECORDS, [source], '2026-09-04', { ...OPTIONS, now: '2026-09-05T06:00:00Z' });
+    await runDaily(env.RECORDS, [source], '2026-09-05', { ...OPTIONS, now: '2026-09-06T06:00:00Z' });
+    calls.length = 0;
+
+    // 2026-09-07 の実行は前日（09-06）を収集できず、翌 09-08 の実行が 2 日前として拾う。
+    await recollectRecent(env.RECORDS, [source], { ...OPTIONS, now: '2026-09-08T06:00:00Z' });
+
+    expect(calls).toContain('2026-09-06');
+    expect(await getRecord(env.RECORDS, '2026-09-06')).not.toBeNull();
+  });
+});
+
+describe('埋め戻しと予算', () => {
+  it('予算に余地がなければ欠落した日も収集しない', async () => {
+    const base = mutableSource(new Map());
+    // 稼働開始を 2026-09-01 とし、以降の日をすべて欠落させる。種まきは予算を使わない。
+    await runDaily(env.RECORDS, [base], '2026-09-01', { ...OPTIONS, now: '2026-09-02T06:00:00Z' });
+
+    const calls: string[] = [];
+    // 予算は実際の問い合わせで減るため、宣言した回数だけ消費する収集ソースを使う。
+    const budget = new RequestBudget(11);
+    const source: CollectionSource = {
+      ...base,
+      requestsPerCollection: 10,
+      async collect(date) {
+        calls.push(date);
+        const fetchImpl = budget.wrap(async () => new Response('{}'));
+        for (let index = 0; index < 10; index += 1) {
+          await fetchImpl('https://example.invalid/');
+        }
+        return base.collect(date);
+      },
+    };
+
+    // 1 日あたり 11 件（ソース 10 + レート 1）と見積もるため、予算 11 では 1 日しか扱えない。
+    const outcome = await recollectRecent(env.RECORDS, [source], {
+      ...OPTIONS,
+      now: '2026-09-08T06:00:00Z',
+      budget,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(outcome.stoppedAt).toBeDefined();
   });
 });
