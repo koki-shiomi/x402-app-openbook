@@ -21,4 +21,4 @@
 ## 5. 反映と確認
 
 - [x] 5.1 `pnpm -r typecheck`・`pnpm -r test`・`pnpm check:crons`・`pnpm check:assets` がすべて成功することを確認する
-- [ ] 5.2 デプロイし、`GET /v1/records`・`GET /v1/records/{date}`・`GET /health`・画面の挙動が変わっていないことを本番で確認する
+- [x] 5.2 デプロイし、`GET /v1/records`・`GET /v1/records/{date}`・`GET /health`・画面の挙動が変わっていないことを本番で確認する
