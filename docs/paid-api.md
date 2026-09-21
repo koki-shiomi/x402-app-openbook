@@ -2,6 +2,15 @@
 
 日次財務レコードを x402 による USDC 決済つきで公開する API である。取得したバイト列は、Arc テストネット上に刻印されたハッシュと照合して検証できる。検証の手順は [verify-anchor.md](verify-anchor.md) を参照。
 
+## 機械可読な仕様
+
+| | 所在 |
+| --- | --- |
+| OpenAPI ドキュメント | `https://sizet-openbook-api.c7uv-tk16-s.workers.dev/openapi.json` |
+| API リファレンスの画面 | `https://sizet-openbook-api.c7uv-tk16-s.workers.dev/docs` |
+
+いずれも支払いは不要である。要求と応答の形は OpenAPI ドキュメントが示す。本書は決済の手順など、OpenAPI では表せない事柄を扱う。
+
 ## 基本情報
 
 | 項目 | 値 |

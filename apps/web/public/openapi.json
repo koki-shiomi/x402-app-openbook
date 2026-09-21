@@ -1,0 +1,387 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sizet OpenBook API",
+    "version": "1.0.0",
+    "summary": "個人開発アプリ Sizet の日次の収益と費用を公開する API",
+    "description": "日次財務レコードを x402 による USDC 決済つきで公開する。返すバイト列は保存されているものそのもので、Arc テストネット上に刻印されたハッシュと照合して検証できる。\n\n決済の手順（署名の組み立て方、EIP-712 のドメインの決定、事前に必要な預け入れ）は本書では扱わない。docs/paid-api.md を参照。"
+  },
+  "servers": [
+    {
+      "url": "https://sizet-openbook-api.c7uv-tk16-s.workers.dev",
+      "description": "本番"
+    }
+  ],
+  "tags": [
+    {
+      "name": "records",
+      "description": "日次財務レコードの取得"
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/v1/records": {
+      "get": {
+        "tags": ["records"],
+        "summary": "取得可能な対象日の一覧",
+        "description": "支払いは不要である。対象日とリビジョン番号のみを返し、金額は含まない。一覧に現れるのは、レコードが存在し、かつ最新リビジョンが刻印済みの日だけである。",
+        "operationId": "listRecords",
+        "responses": {
+          "200": {
+            "description": "対象日の降順で並んだ一覧",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RecordList" },
+                "example": {
+                  "records": [
+                    { "date": "2026-09-15", "revision": 1 },
+                    { "date": "2026-09-14", "revision": 1 }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/records/{date}": {
+      "get": {
+        "tags": ["records"],
+        "summary": "1 日分の日次財務レコード",
+        "description": "指定した対象日の日次財務レコードを返す。支払いが必要である。\n\n返るのは常に最新リビジョンであり、過去のリビジョンを指定する手段はない。本文は保存されているバイト列そのもの（正準 JSON、RFC 8785 + 配列の並び順規則）で、1 バイトも変えずに SHA-256 を取るとチェーン上に刻印されたハッシュと一致する。整形・キーの並べ替え・再直列化を行うと一致しなくなる。\n\n400・404・409 は支払いを求める前に返る。取得できないものに支払うことはない。",
+        "operationId": "getRecord",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "description": "対象日（UTC の暦日）",
+            "schema": { "$ref": "#/components/schemas/Date" },
+            "example": "2026-09-15"
+          },
+          {
+            "name": "PAYMENT-SIGNATURE",
+            "in": "header",
+            "required": false,
+            "description": "署名した支払い（Base64 の JSON）。402 で受け取った条件に沿って組み立てる。組み立て方は docs/paid-api.md を参照。",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "決済が成立し、レコードを返した",
+            "headers": {
+              "X-Anchor-Revision": {
+                "description": "刻印されたリビジョン番号",
+                "schema": { "type": "integer", "minimum": 1 }
+              },
+              "X-Anchor-Hash": {
+                "description": "刻印された SHA-256（`0x` つき）",
+                "schema": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+              },
+              "X-Anchor-Chain-Id": {
+                "description": "チェーン ID",
+                "schema": { "type": "integer", "examples": [5042002] }
+              },
+              "X-Anchor-Contract": {
+                "description": "刻印のコントラクトのアドレス",
+                "schema": { "$ref": "#/components/schemas/Address" }
+              },
+              "X-Anchor-Transaction": {
+                "description": "刻印のトランザクションのハッシュ。刻印の記録を後から補った場合は省かれる。",
+                "required": false,
+                "schema": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+              },
+              "X-Anchor-Block": {
+                "description": "刻印が含まれるブロック番号。刻印の記録を後から補った場合は省かれる。",
+                "required": false,
+                "schema": { "type": "integer" }
+              },
+              "PAYMENT-RESPONSE": {
+                "description": "決済の成立の結果（Base64 の JSON）",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DailyRecord" }
+              }
+            }
+          },
+          "400": {
+            "description": "対象日が `YYYY-MM-DD` 形式でない、または実在しない暦日である",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "date は実在する UTC 暦日である必要があります" }
+              }
+            }
+          },
+          "402": {
+            "description": "支払いが必要である。支払いの条件は本文ではなく `PAYMENT-REQUIRED` ヘッダに入る。本文は空のオブジェクトである。",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "description": "支払いの条件。Base64 で符号化された JSON で、復号した中身は `PaymentRequired` の形である。",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "base64",
+                  "contentMediaType": "application/json",
+                  "contentSchema": { "$ref": "#/components/schemas/PaymentRequired" }
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "空のオブジェクト。支払いの条件は `PAYMENT-REQUIRED` ヘッダを参照する。"
+                },
+                "example": {}
+              }
+            }
+          },
+          "404": {
+            "description": "指定した対象日のレコードが存在しない",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "指定した対象日のレコードは存在しません" }
+              }
+            }
+          },
+          "409": {
+            "description": "レコードは存在するが、まだ刻印されていない（刻印待ち）。時間をおいて再度要求できる。\n\n収集からハッシュの刻印までの短い間と、刻印が失敗してから次の実行までの間に返る。この API は返すすべての情報が検証可能であることを鮮度より優先するため、未刻印のレコードは返さない。",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PendingAnchor" },
+                "example": {
+                  "date": "2026-09-16",
+                  "reason": "この日のレコードはまだ刻印されていません（刻印待ち）"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "決済の設定が未完了、または決済の取次に接続できないため、一時的に利用できない",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Date": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+        "description": "UTC の暦日（`YYYY-MM-DD`）"
+      },
+      "Address": {
+        "type": "string",
+        "pattern": "^0x[0-9a-fA-F]{40}$",
+        "description": "EVM のアドレス"
+      },
+      "Decimal": {
+        "type": "string",
+        "description": "10 進小数の文字列。浮動小数点数では表さない。",
+        "examples": ["20.53", "0.045947"]
+      },
+      "RecordList": {
+        "type": "object",
+        "required": ["records"],
+        "properties": {
+          "records": {
+            "type": "array",
+            "description": "対象日の降順",
+            "items": {
+              "type": "object",
+              "required": ["date", "revision"],
+              "properties": {
+                "date": { "$ref": "#/components/schemas/Date" },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "刻印済みの最新リビジョン番号"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Entry": {
+        "type": "object",
+        "description": "収益または費用の 1 件",
+        "required": ["source", "category", "acquisition", "revisable", "currency", "amount", "amountJpy"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "取得元",
+            "examples": ["claude", "cloudflare", "resend", "supabase", "admob"]
+          },
+          "category": { "type": "string", "description": "内訳の区分" },
+          "acquisition": {
+            "type": "string",
+            "enum": ["measured", "derived", "estimated"],
+            "description": "取得方式。実測・導出・宣言のいずれか。"
+          },
+          "revisable": {
+            "type": "boolean",
+            "description": "提供元が後から値を改訂しうるか"
+          },
+          "currency": { "type": "string", "description": "原通貨", "examples": ["JPY", "USD"] },
+          "amount": { "$ref": "#/components/schemas/Decimal" },
+          "amountJpy": { "$ref": "#/components/schemas/Decimal" },
+          "exchangeRate": {
+            "$ref": "#/components/schemas/Decimal",
+            "description": "換算に用いたレート。原通貨が JPY の場合は入らない。"
+          },
+          "sourceTimezone": {
+            "type": "string",
+            "description": "取得元の集計タイムゾーン。レコードの対象日（UTC 暦日）と境界がずれる場合に入る。",
+            "examples": ["Asia/Tokyo"]
+          },
+          "basis": {
+            "type": "object",
+            "description": "算出根拠",
+            "additionalProperties": true
+          }
+        }
+      },
+      "DailyRecord": {
+        "type": "object",
+        "description": "1 日分の財務レコード。保存されているバイト列そのもの。",
+        "required": ["date", "revision", "schemaVersion", "generatedAt", "costs", "revenues", "incomplete", "exchangeRates", "totals"],
+        "properties": {
+          "date": { "$ref": "#/components/schemas/Date" },
+          "revision": { "type": "integer", "minimum": 1 },
+          "schemaVersion": { "type": "integer" },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "costs": { "type": "array", "items": { "$ref": "#/components/schemas/Entry" } },
+          "revenues": { "type": "array", "items": { "$ref": "#/components/schemas/Entry" } },
+          "incomplete": {
+            "type": "array",
+            "description": "取得できなかった対象。0 円としては記録しない。",
+            "items": {
+              "type": "object",
+              "required": ["kind", "id", "reason"],
+              "properties": {
+                "kind": { "type": "string", "examples": ["source", "exchange-rate"] },
+                "id": { "type": "string" },
+                "reason": { "type": "string" }
+              }
+            }
+          },
+          "exchangeRates": {
+            "type": "array",
+            "description": "適用した為替レート。換算を再計算できるよう公表日つきで残す。",
+            "items": {
+              "type": "object",
+              "required": ["pair", "rate", "provider", "publishedOn", "fetchedAt"],
+              "properties": {
+                "pair": { "type": "string", "examples": ["USD/JPY"] },
+                "rate": { "$ref": "#/components/schemas/Decimal" },
+                "provider": { "type": "string", "examples": ["frankfurter"] },
+                "publishedOn": { "$ref": "#/components/schemas/Date" },
+                "fetchedAt": { "type": "string", "format": "date-time" }
+              }
+            }
+          },
+          "correction": {
+            "type": "object",
+            "description": "訂正リビジョンの場合に入る",
+            "required": ["supersedes", "reason"],
+            "properties": {
+              "supersedes": { "type": "integer", "minimum": 1 },
+              "reason": { "type": "string" }
+            }
+          },
+          "totals": {
+            "type": "object",
+            "required": ["revenueJpy", "costJpy", "profitJpy", "incomplete"],
+            "properties": {
+              "revenueJpy": { "$ref": "#/components/schemas/Decimal" },
+              "costJpy": { "$ref": "#/components/schemas/Decimal" },
+              "profitJpy": { "$ref": "#/components/schemas/Decimal" },
+              "incomplete": {
+                "type": "boolean",
+                "description": "欠測を含むか。含む場合、合計は取得できた分のみの値である。"
+              }
+            }
+          }
+        }
+      },
+      "PaymentTerms": {
+        "type": "object",
+        "description": "提示された支払いの条件 1 件",
+        "required": ["scheme", "network", "amount", "asset", "payTo", "maxTimeoutSeconds", "extra"],
+        "properties": {
+          "scheme": { "type": "string", "examples": ["exact"] },
+          "network": {
+            "type": "string",
+            "description": "決済のネットワーク（CAIP-2）",
+            "examples": ["eip155:5042002"]
+          },
+          "amount": {
+            "type": "string",
+            "description": "価格（資産の最小単位の整数の文字列）",
+            "examples": ["100000"]
+          },
+          "asset": { "$ref": "#/components/schemas/Address" },
+          "payTo": { "$ref": "#/components/schemas/Address" },
+          "maxTimeoutSeconds": {
+            "type": "integer",
+            "description": "署名の有効期間（秒）"
+          },
+          "extra": {
+            "type": "object",
+            "description": "署名に用いる EIP-712 のドメインなど。決済の取次が広告した値をそのまま引き写したものであり、署名にはこの値を用いる。詳細は docs/paid-api.md を参照。",
+            "additionalProperties": true
+          }
+        }
+      },
+      "PaymentRequired": {
+        "type": "object",
+        "description": "`PAYMENT-REQUIRED` ヘッダを Base64 から復号した中身",
+        "required": ["x402Version", "resource", "accepts"],
+        "properties": {
+          "x402Version": { "type": "integer", "examples": [2] },
+          "error": { "type": "string", "examples": ["Payment required"] },
+          "resource": {
+            "type": "object",
+            "description": "対象となる資源の情報。署名に添えて送り返す。",
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "description": { "type": "string" },
+              "mimeType": { "type": "string" }
+            }
+          },
+          "accepts": {
+            "type": "array",
+            "description": "受け付ける支払いの条件",
+            "items": { "$ref": "#/components/schemas/PaymentTerms" }
+          }
+        }
+      },
+      "PendingAnchor": {
+        "type": "object",
+        "required": ["date", "reason"],
+        "properties": {
+          "date": { "$ref": "#/components/schemas/Date" },
+          "reason": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}

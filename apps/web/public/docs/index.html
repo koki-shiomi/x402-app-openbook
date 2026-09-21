@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sizet OpenBook API リファレンス</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!--
+      配信中の /openapi.json を読み込んで表示する。内容をこの画面へ複製すると、
+      ドキュメントを更新した際に画面側が古いまま残るため、常に読み込む。
+      バージョンは固定する。明示的に上げない限り表示が変わらないようにするため。
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.69.2"></script>
+    <script>
+      Scalar.createApiReference('#app', { url: '/openapi.json' });
+    </script>
+  </body>
+</html>
