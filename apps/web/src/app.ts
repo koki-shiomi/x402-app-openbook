@@ -190,14 +190,26 @@ function renderConnect(target: HTMLElement, deps: AppDeps & { fetchImpl: typeof 
         return;
       }
 
+      let address: string;
       try {
-        const address = await connectWallet(ethereum);
+        address = await connectWallet(ethereum);
         await ensureChain(ethereum, ANCHOR_CHAIN_ID);
-        connect.remove();
-        await renderDepositPanel(body, ethereum, address, deps);
       } catch (error) {
         body.replaceChildren(
           paragraph(error instanceof Error ? error.message : 'ウォレットへ接続できませんでした'),
+        );
+        return;
+      }
+
+      // 接続の後の失敗は、接続そのものの失敗とは理由が異なる。接続できたのに
+      // 「接続できなかった」と示すと原因を取り違える。接続の操作はやり直す手段
+      // そのものであるため、後続が成功するまで取り除かない。
+      try {
+        await renderDepositPanel(body, ethereum, address, deps);
+        connect.remove();
+      } catch (error) {
+        body.replaceChildren(
+          paragraph(error instanceof Error ? error.message : '残高を確認できませんでした'),
         );
       }
     })();

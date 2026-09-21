@@ -1,5 +1,7 @@
 import { canonicalize } from '@openbook/shared';
 
+import { listKeys } from '../r2-listing.js';
+
 /**
  * 支払いの明細の保存。
  *
@@ -64,8 +66,7 @@ export async function listPaymentReceipts(
   bucket: R2Bucket,
   date: string,
 ): Promise<PaymentReceipt[]> {
-  const listed = await bucket.list({ prefix: `payments/${date}/` });
-  const keys = listed.objects.map((object) => object.key).sort();
+  const keys = (await listKeys(bucket, `payments/${date}/`)).sort();
 
   const receipts: PaymentReceipt[] = [];
   for (const key of keys) {

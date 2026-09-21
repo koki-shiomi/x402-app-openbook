@@ -1,4 +1,5 @@
 import { canonicalize } from '@openbook/shared';
+import { listKeys } from '../r2-listing.js';
 
 /**
  * 刻印の結果と実行記録の保存。
@@ -113,8 +114,7 @@ export async function writeAnchorRun(bucket: R2Bucket, log: AnchorRunLog): Promi
  * @returns 実行記録の配列
  */
 export async function readAnchorRuns(bucket: R2Bucket): Promise<AnchorRunLog[]> {
-  const listed = await bucket.list({ prefix: 'anchor-runs/' });
-  const keys = listed.objects.map((object) => object.key).sort();
+  const keys = (await listKeys(bucket, 'anchor-runs/')).sort();
 
   const runs: AnchorRunLog[] = [];
   for (const key of keys) {

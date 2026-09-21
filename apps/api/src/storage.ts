@@ -1,4 +1,5 @@
 import { canonicalize, validateRecord, type DailyRecord } from '@openbook/shared';
+import { listKeys } from './r2-listing.js';
 
 /**
  * R2 上の日次レコードと生応答の保存規約。
@@ -149,8 +150,7 @@ export async function getRecord(
  * @returns 最新リビジョンのキー。レコードが存在しない場合は null
  */
 async function latestKey(bucket: R2Bucket, date: string): Promise<string | null> {
-  const listed = await bucket.list({ prefix: `records/${date}/` });
-  const keys = listed.objects.map((object) => object.key).sort();
+  const keys = (await listKeys(bucket, `records/${date}/`)).sort();
 
   return keys.length === 0 ? null : keys[keys.length - 1]!;
 }
@@ -178,11 +178,11 @@ export async function listRecords(
   from: string,
   to: string,
 ): Promise<StoredRecord[]> {
-  const listed = await bucket.list({ prefix: 'records/' });
+  const keys = await listKeys(bucket, 'records/');
   const dates = [
     ...new Set(
-      listed.objects
-        .map((object) => object.key.split('/')[1])
+      keys
+        .map((key) => key.split('/')[1])
         .filter((date): date is string => date !== undefined && date >= from && date <= to),
     ),
   ].sort();

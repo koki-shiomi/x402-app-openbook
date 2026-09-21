@@ -9,11 +9,14 @@
 /**
  * 接頭辞に一致するキーをすべて列挙する。
  *
+ * R2 の 1 度の列挙には件数の上限があるため、`truncated` が立つ間は `cursor` で
+ * 続きを辿る。辿らないと、保存物が増えたときに一部だけが返る。
+ *
  * @param bucket 取得元の R2 バケット
  * @param prefix キーの接頭辞
  * @returns オブジェクトキーの配列
  */
-async function listKeys(bucket: R2Bucket, prefix: string): Promise<string[]> {
+export async function listKeys(bucket: R2Bucket, prefix: string): Promise<string[]> {
   const keys: string[] = [];
   let cursor: string | undefined;
 

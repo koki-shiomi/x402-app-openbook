@@ -21,7 +21,8 @@ function parseJsonc(text) {
   return JSON.parse(withoutComments);
 }
 
-const { triggers } = parseJsonc(readFileSync(CONFIG, 'utf8'));
+const source = readFileSync(CONFIG, 'utf8');
+const { triggers } = parseJsonc(source);
 const configured = triggers?.crons ?? [];
 const expected = [...COLLECTION_TRIGGERS.map((trigger) => trigger.cron), ANCHOR_TRIGGER];
 
@@ -34,4 +35,25 @@ if (JSON.stringify(sorted(configured)) !== JSON.stringify(sorted(expected))) {
   process.exit(1);
 }
 
-console.log(`定期実行は一致しています（収集 ${COLLECTION_TRIGGERS.length} 本 + 刻印 1 本）。`);
+/**
+ * コメントに書かれた担当範囲を「a〜b 日前」の並びとして読み取る。
+ *
+ * 担当範囲はコメントにしか書かれておらず、設定ファイルだけを見る人はここを頼りに
+ * する。指定そのものと違って機械的に比較されないため、実装を変えたときに直し漏れる。
+ */
+const documented = [...source.matchAll(/(\d+)〜(\d+)\s*日前/g)].map((match) => ({
+  from: Number(match[1]),
+  to: Number(match[2]),
+}));
+const declared = COLLECTION_TRIGGERS.map((trigger) => trigger.slice);
+
+if (JSON.stringify(documented) !== JSON.stringify(declared)) {
+  console.error('設定ファイルのコメントが実装の担当範囲と一致しません。');
+  console.error(`  コメント: ${JSON.stringify(documented)}`);
+  console.error(`  実装:     ${JSON.stringify(declared)}`);
+  process.exit(1);
+}
+
+console.log(
+  `定期実行は一致しています（収集 ${COLLECTION_TRIGGERS.length} 本 + 刻印 1 本、担当範囲も一致）。`,
+);

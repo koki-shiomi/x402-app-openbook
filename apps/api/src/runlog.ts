@@ -1,5 +1,7 @@
 import { canonicalize } from '@openbook/shared';
 
+import { listKeys } from './r2-listing.js';
+
 /** 収集ソース 1 件の実行結果。 */
 export interface SourceResult {
   /** 取得元の識別子。 */
@@ -153,8 +155,7 @@ export async function writeCollectionRun(
  * @returns 実行記録の配列
  */
 export async function readCollectionRuns(bucket: R2Bucket): Promise<CollectionRunLog[]> {
-  const listed = await bucket.list({ prefix: 'collection-runs/' });
-  const keys = listed.objects.map((object) => object.key).sort();
+  const keys = (await listKeys(bucket, 'collection-runs/')).sort();
 
   const runs: CollectionRunLog[] = [];
   for (const key of keys) {
