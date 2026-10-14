@@ -8,7 +8,7 @@ const RECEIPT = {
   date: '2026-09-15',
   amount: '100000',
   asset: '0x3600000000000000000000000000000000000000',
-  network: 'eip155:5042002',
+  network: 'eip155:5042',
   payer: '0x0000000000000000000000000000000000000001',
   transactionHash: '0xsettled',
 };

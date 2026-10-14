@@ -10,6 +10,7 @@ import {
   previousDay,
   recollectionDates,
   recollectRecent,
+  runCollection,
 } from '../src/schedule.js';
 import { readRun } from '../src/runlog.js';
 import { getRecord, recordKey } from '../src/storage.js';
@@ -43,6 +44,28 @@ function mutableSource(amounts: Map<string, string>): CollectionSource {
 }
 
 const OPTIONS = { now: '2026-09-08T06:00:00Z', fetchRate: async () => undefined };
+
+describe('旧データ削除後の収集開始', () => {
+  const duty = { cron: '0 6 * * *', collectPreviousDay: true, slice: { from: 2, to: 12 } };
+  it('空の保存先から前日のリビジョン 1 だけを作り旧期間を埋め戻さない', async () => {
+    const source = mutableSource(new Map());
+    await runCollection(env.RECORDS, [source], { ...OPTIONS, now: '2026-10-05T06:00:00Z' }, duty);
+    const first = JSON.parse(decoder.decode((await getRecord(env.RECORDS, '2026-10-04'))!));
+    expect(first.revision).toBe(1);
+    expect((await env.RECORDS.list({ prefix: 'records/' })).objects.map(x => x.key)).toEqual(['records/2026-10-04/001.json']);
+    await runCollection(env.RECORDS, [source], { ...OPTIONS, now: '2026-10-06T06:00:00Z' }, duty);
+    expect(await getRecord(env.RECORDS, '2026-10-03')).toBeNull();
+    expect(await getRecord(env.RECORDS, '2026-10-05')).not.toBeNull();
+  });
+  it('初回が失敗した場合は次の成功した前日から始める', async () => {
+    const failing: CollectionSource = { ...mutableSource(new Map()), collect() { throw new Error('取得失敗'); } };
+    await runCollection(env.RECORDS, [failing], { ...OPTIONS, now: '2026-10-05T06:00:00Z' }, duty);
+    expect((await env.RECORDS.list({ prefix: 'records/' })).objects).toEqual([]);
+    await runCollection(env.RECORDS, [mutableSource(new Map())], { ...OPTIONS, now: '2026-10-06T06:00:00Z' }, duty);
+    expect(await getRecord(env.RECORDS, '2026-10-04')).toBeNull();
+    expect(await getRecord(env.RECORDS, '2026-10-05')).not.toBeNull();
+  });
+});
 
 beforeEach(async () => {
   const listed = await env.RECORDS.list();

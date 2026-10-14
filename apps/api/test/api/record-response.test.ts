@@ -7,7 +7,7 @@ const BASE: AnchorRecord = {
   date: '2026-09-15',
   revision: 2,
   hash: '0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-  chainId: 5042002,
+  chainId: 5042,
   contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
   transactionHash: '0x93dcca0e02cb1b2da2ef1610af6cfc0451cd99fa2d02e336eeaeb833a4c91703',
   blockNumber: 62351751,
@@ -21,7 +21,7 @@ describe('刻印情報の応答ヘッダ', () => {
     expect(headers).toEqual({
       'X-Anchor-Revision': '2',
       'X-Anchor-Hash': BASE.hash,
-      'X-Anchor-Chain-Id': '5042002',
+      'X-Anchor-Chain-Id': '5042',
       'X-Anchor-Contract': BASE.contractAddress,
       'X-Anchor-Transaction': BASE.transactionHash,
       'X-Anchor-Block': '62351751',
@@ -36,7 +36,7 @@ describe('刻印情報の応答ヘッダ', () => {
     expect(headers).toEqual({
       'X-Anchor-Revision': '2',
       'X-Anchor-Hash': BASE.hash,
-      'X-Anchor-Chain-Id': '5042002',
+      'X-Anchor-Chain-Id': '5042',
       'X-Anchor-Contract': BASE.contractAddress,
     });
   });

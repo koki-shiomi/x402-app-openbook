@@ -16,7 +16,7 @@ const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 
 const TERMS = {
   scheme: 'exact',
-  network: 'eip155:5042002',
+  network: 'eip155:5042',
   amount: '100000',
   asset: '0x3600000000000000000000000000000000000000',
   payTo: '0xd77dd307A9E395fB2680011deeD994A27cf70d4b',
@@ -24,7 +24,7 @@ const TERMS = {
   extra: {
     name: 'GatewayWalletBatched',
     version: '1',
-    verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+    verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
   },
 };
 
@@ -58,7 +58,7 @@ function payableFetch() {
         'content-type': 'application/json',
         'X-Anchor-Revision': '1',
         'X-Anchor-Hash': '0x0d12c192da7d580cfb56e9ba3ed0ce413e480b7be83926dbb17b365203986a5e',
-        'X-Anchor-Chain-Id': '5042002',
+        'X-Anchor-Chain-Id': '5042',
         'X-Anchor-Contract': '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
       },
     });
@@ -70,7 +70,7 @@ function payableFetch() {
 /** 既定の依存。 */
 function deps(overrides: Record<string, unknown> = {}) {
   return {
-    ethereum: createWalletStub({ chainId: 5042002 }),
+    ethereum: createWalletStub({ chainId: 5042 }),
     readDeposit: async () => 500000n,
     ...overrides,
   };
@@ -95,14 +95,14 @@ describe('購入の流れ', () => {
     expect(result.ok === true && result.anchorHeaders).toEqual({
       revision: 1,
       hash: '0x0d12c192da7d580cfb56e9ba3ed0ce413e480b7be83926dbb17b365203986a5e',
-      chainId: 5042002,
+      chainId: 5042,
       contract: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
     });
   });
 
   it('事前条件を満たさなければ署名を求めず理由を返す', async () => {
     const { fetchImpl, calls } = payableFetch();
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const seen: string[] = [];
     const watching = {
       ...wallet,
@@ -126,7 +126,7 @@ describe('購入の流れ', () => {
 
   it('秘密鍵の入力を求めない', async () => {
     const { fetchImpl } = payableFetch();
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const seen: string[] = [];
     const watching = {
       ...wallet,
@@ -170,7 +170,7 @@ describe('署名の内容', () => {
   it('接続したアドレスが支払い元になる', async () => {
     const { fetchImpl } = payableFetch();
     let signedFrom: string | undefined;
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const watching = {
       ...wallet,
       async request(request: { method: string; params?: unknown[] }) {

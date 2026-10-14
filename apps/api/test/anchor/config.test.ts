@@ -5,7 +5,7 @@ import { loadAnchorConfig } from '../../src/anchor/config.js';
 const FULL = {
   ARC_SIGNER_PRIVATE_KEY:
     '0x1111111111111111111111111111111111111111111111111111111111111111',
-  ARC_RPC_URL: 'https://rpc.testnet.arc.io',
+  ARC_RPC_URL: 'https://rpc.mainnet.arc.io',
   ARC_ANCHOR_CONTRACT: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
 };
 

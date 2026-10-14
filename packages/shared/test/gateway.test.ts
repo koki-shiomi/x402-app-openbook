@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { GATEWAY_WALLET_ABI } from './gateway.js';
+import { GATEWAY_WALLET_ABI } from '../src/gateway.js';
 
 /**
  * Gateway Wallet の ABI の確認。

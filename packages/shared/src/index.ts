@@ -1,3 +1,4 @@
+export { ARC_CHAIN, ARC_NETWORK } from './network.js';
 export { ANCHOR_REGISTRY_ABI } from './abi.js';
 export { GATEWAY_WALLET_ABI } from './gateway.js';
 export { canonicalize } from './canonical.js';

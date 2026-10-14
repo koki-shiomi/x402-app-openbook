@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { readRun } from '../src/runlog.js';
 import { getRecord } from '../src/storage.js';
 
-/** wrangler.jsonc の vars で与えたテスト用トークン。 */
+/** test/support/runtime.ts で与えたテスト用トークン。 */
 const TOKEN = 'test-token';
 
 beforeEach(async () => {

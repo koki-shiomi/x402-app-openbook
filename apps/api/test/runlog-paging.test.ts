@@ -67,7 +67,7 @@ describe('支払いの明細の読み出し', () => {
           payer: '0x0000000000000000000000000000000000000001',
           amount: '100000',
           asset: '0x3600000000000000000000000000000000000000',
-          network: 'eip155:5042002',
+          network: 'eip155:5042',
           transactionHash: `id-${index}`,
           settledAt,
         };

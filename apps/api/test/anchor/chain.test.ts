@@ -5,7 +5,7 @@ import { createAnchorChain } from '../../src/anchor/chain.js';
 
 const CONFIG = {
   signerPrivateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-  rpcUrl: 'https://rpc.testnet.arc.io',
+  rpcUrl: 'https://rpc.mainnet.arc.io',
   contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
 };
 
@@ -24,7 +24,7 @@ function capturingTransport(baseFeePerGas: bigint) {
     async request({ method, params }: { method: string; params: unknown[] }) {
       switch (method) {
         case 'eth_chainId':
-          return toHex(5042002);
+          return toHex(5042);
         case 'eth_getBlockByNumber':
           return { baseFeePerGas: toHex(baseFeePerGas), number: toHex(100), timestamp: toHex(1) };
         case 'eth_maxPriorityFeePerGas':

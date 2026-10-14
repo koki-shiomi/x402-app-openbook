@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { loadPaymentConfig } from '../../src/payment/config.js';
 
 const FULL = {
-  X402_FACILITATOR_URL: 'https://gateway-api-testnet.circle.com/v1/x402',
+  X402_FACILITATOR_URL: 'https://gateway-api.circle.com/v1/x402',
   X402_PAY_TO: '0xd77dd307A9E395fB2680011deeD994A27cf70d4b',
   X402_PRICE_USDC: '0.10',
 };
 
 describe('決済の設定の読み取り', () => {
+  it('運営者指定の刻印 EOA と受取先の共用を許す', () => {
+    expect(loadPaymentConfig(FULL).config?.payTo).toBe('0xd77dd307A9E395fB2680011deeD994A27cf70d4b');
+  });
+
   it('3 つがそろえば設定が得られる', () => {
     const result = loadPaymentConfig(FULL);
 

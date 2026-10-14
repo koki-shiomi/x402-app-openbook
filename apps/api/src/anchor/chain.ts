@@ -1,4 +1,4 @@
-import { ANCHOR_REGISTRY_ABI, type HexHash } from '@openbook/shared';
+import { ANCHOR_REGISTRY_ABI, ARC_CHAIN, type HexHash } from '@openbook/shared';
 import {
   createPublicClient,
   createWalletClient,
@@ -7,21 +7,20 @@ import {
   type Transport,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arcTestnet } from 'viem/chains';
 
 import type { AnchorConfig } from './config.js';
 import type { ChainState, PreparedTarget } from './reconcile.js';
 import type { AnchorTarget } from './targets.js';
 
 /**
- * Arc テストネットへの照会と刻印の送信。
+ * Arc メインネットへの照会と刻印の送信。
  *
  * 照会と送信を 1 つのインタフェースにまとめ、テストではメモリ上の実装を渡す。
  * 詳細は specs/hash-anchoring/spec.md を参照。
  */
 
 /** 刻印を送る先のチェーンが満たすべき ID。誤った RPC への送信を防ぐ。 */
-export const EXPECTED_CHAIN_ID = 5042002;
+export const EXPECTED_CHAIN_ID = ARC_CHAIN.id;
 
 /**
  * 手数料の下限。Arc の公式ドキュメントは `maxFeePerGas` を 20 Gwei 以上にするよう
@@ -63,7 +62,7 @@ function toDateNumber(date: string): number {
 }
 
 /**
- * Arc テストネットへ接続する AnchorChain を組み立てる。
+ * Arc メインネットへ接続する AnchorChain を組み立てる。
  *
  * 照会は viem のマルチコールで 1 回の呼び出しにまとめる。
  *
@@ -77,11 +76,11 @@ export function createAnchorChain(config: AnchorConfig, transport?: Transport): 
   const resolved = transport ?? http(config.rpcUrl);
 
   const publicClient = createPublicClient({
-    chain: arcTestnet,
+    chain: ARC_CHAIN,
     transport: resolved,
     batch: { multicall: true },
   });
-  const walletClient = createWalletClient({ account, chain: arcTestnet, transport: resolved });
+  const walletClient = createWalletClient({ account, chain: ARC_CHAIN, transport: resolved });
 
   const contract = { address, abi: ANCHOR_REGISTRY_ABI } as const;
 

@@ -1,4 +1,5 @@
 import { ARC_RPC_URL } from './config.js';
+import { ARC_CHAIN } from '@openbook/shared';
 import type { EthereumProvider } from './preconditions.js';
 
 /**
@@ -88,10 +89,10 @@ export async function ensureChain(
     params: [
       {
         chainId: hexChainId,
-        chainName: 'Arc Testnet',
+        chainName: ARC_CHAIN.name,
         rpcUrls: [ARC_RPC_URL],
-        nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-        blockExplorerUrls: ['https://testnet.arcscan.app'],
+        nativeCurrency: ARC_CHAIN.nativeCurrency,
+        blockExplorerUrls: [ARC_CHAIN.blockExplorers.default.url],
       },
     ],
   });

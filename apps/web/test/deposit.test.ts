@@ -26,7 +26,7 @@ describe('預け入れの署名の組み立て', () => {
     expect(built.domain).toEqual({
       name: 'USDC',
       version: '2',
-      chainId: 5042002,
+      chainId: 5042,
       verifyingContract: PAYMENT_ASSET,
     });
   });
@@ -66,7 +66,7 @@ describe('預け入れの実行', () => {
   }
 
   it('署名 1 回とトランザクション 1 回で完了する', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const seen: string[] = [];
     const watching = {
       ...wallet,
@@ -90,7 +90,7 @@ describe('預け入れの実行', () => {
   });
 
   it('送るのは取次のコントラクトへの預け入れである', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
 
     await deposit(100000n, {
       ethereum: wallet,
@@ -109,7 +109,7 @@ describe('預け入れの実行', () => {
   });
 
   it('送る署名が局所アカウントの署名と一致する', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const built = buildDepositAuthorization(account.address, 100000n, () => 1_789_000_000_000);
 
     await deposit(100000n, {
@@ -149,7 +149,7 @@ describe('預け入れの実行', () => {
 
 describe('反映の待機', () => {
   it('残高へ反映されるまで待つ', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const stages: string[] = [];
     let calls = 0;
 
@@ -170,7 +170,7 @@ describe('反映の待機', () => {
   });
 
   it('反映されなければ完了として示さない', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const stages: string[] = [];
 
     const result = await deposit(100000n, {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createRecord } from './create.js';
-import { SCHEMA_VERSION } from './record.js';
-import { validateRecord } from './validate.js';
+import { createRecord } from '../src/create.js';
+import { SCHEMA_VERSION } from '../src/record.js';
+import { validateRecord } from '../src/validate.js';
 
 describe('createRecord', () => {
   it('現行の schemaVersion を必ず付与する', () => {

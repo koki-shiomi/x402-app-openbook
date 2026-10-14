@@ -3,7 +3,7 @@
  *
  * `contracts/` のビルド結果（`arc-forge inspect src/AnchorRegistry.sol:AnchorRegistry abi --json`）
  * をそのまま写したもの。刻印と検証の双方がこの定数を参照する。コントラクトを変更したときは
- * 同時に更新する。一致は abi.test.ts で確認する。
+ * 同時に更新し、ビルド結果との一致をレビューで確認する。
  */
 export const ANCHOR_REGISTRY_ABI = [
   {

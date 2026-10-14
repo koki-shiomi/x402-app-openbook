@@ -16,7 +16,7 @@ import { createWalletStub, TEST_PRIVATE_KEY } from './support/wallet-stub.js';
 const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 
 const TERMS: PaymentTerms = {
-  network: 'eip155:5042002',
+  network: 'eip155:5042',
   amount: '100000',
   asset: '0x3600000000000000000000000000000000000000',
   payTo: '0xd77dd307A9E395fB2680011deeD994A27cf70d4b',
@@ -24,7 +24,7 @@ const TERMS: PaymentTerms = {
   extra: {
     name: 'GatewayWalletBatched',
     version: '1',
-    verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+    verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
     minValiditySeconds: 604800,
   },
 };
@@ -36,8 +36,8 @@ describe('支払いの組み立て', () => {
     expect(domain).toEqual({
       name: 'GatewayWalletBatched',
       version: '1',
-      chainId: 5042002,
-      verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+      chainId: 5042,
+      verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
     });
   });
 
@@ -83,7 +83,7 @@ describe('支払いの組み立て', () => {
   });
 
   it('ウォレットで署名でき、局所アカウントの署名と一致する', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const built = buildAuthorization(TERMS, account.address, () => 1_789_000_000_000);
 
     const signature = await signPayment(wallet, built);
@@ -106,7 +106,7 @@ describe('支払いの組み立て', () => {
   });
 
   it('秘密鍵の入力を求めない', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const seen: string[] = [];
     const watching = {
       ...wallet,
@@ -123,7 +123,7 @@ describe('支払いの組み立て', () => {
   });
 
   it('支払いのヘッダに条件と署名が含まれる', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const built = buildAuthorization(TERMS, account.address, () => 1_789_000_000_000);
     const signature = await signPayment(wallet, built);
 

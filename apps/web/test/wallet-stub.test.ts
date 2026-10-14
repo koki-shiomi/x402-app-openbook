@@ -15,9 +15,9 @@ const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 
 describe('ウォレットの疑似の実装', () => {
   it('指定したチェーン ID を返す', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
 
-    expect(await wallet.request({ method: 'eth_chainId' })).toBe('0x4cef52');
+    expect(await wallet.request({ method: 'eth_chainId' })).toBe('0x13b2');
   });
 
   it('切り替えで保持する値が変わる', async () => {
@@ -25,21 +25,21 @@ describe('ウォレットの疑似の実装', () => {
 
     await wallet.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: '0x4cef52' }],
+      params: [{ chainId: '0x13b2' }],
     });
 
-    expect(await wallet.request({ method: 'eth_chainId' })).toBe('0x4cef52');
+    expect(await wallet.request({ method: 'eth_chainId' })).toBe('0x13b2');
   });
 
   it('署名した値が局所アカウントの署名と一致する', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
 
     const typedData = {
       domain: {
         name: 'GatewayWalletBatched',
         version: '1',
-        chainId: 5042002,
-        verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9' as const,
+        chainId: 5042,
+        verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE' as const,
       },
       types: {
         EIP712Domain: [
@@ -83,7 +83,7 @@ describe('ウォレットの疑似の実装', () => {
   });
 
   it('接続していなければアドレスを返さない', async () => {
-    const wallet = createWalletStub({ chainId: 5042002, connected: false });
+    const wallet = createWalletStub({ chainId: 5042, connected: false });
 
     expect(await wallet.request({ method: 'eth_accounts' })).toEqual([]);
     expect(await wallet.request({ method: 'eth_requestAccounts' })).toEqual([account.address]);
@@ -94,18 +94,18 @@ describe('ウォレットの疑似の実装', () => {
     const wallet = createWalletStub({ chainId: 1, acceptAddChain: false });
 
     await expect(
-      wallet.request({ method: 'wallet_addEthereumChain', params: [{ chainId: '0x4cef52' }] }),
+      wallet.request({ method: 'wallet_addEthereumChain', params: [{ chainId: '0x13b2' }] }),
     ).rejects.toThrow();
   });
 });
 
 describe('トランザクションの送信', () => {
   it('送ったトランザクションの内容を検査できる', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
 
     const hash = await wallet.request({
       method: 'eth_sendTransaction',
-      params: [{ from: account.address, to: '0x0077777d7eba4688bdef3e311b846f25870a19b9', data: '0x1234' }],
+      params: [{ from: account.address, to: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE', data: '0x1234' }],
     });
 
     expect(hash).toMatch(/^0x[0-9a-f]{64}$/);

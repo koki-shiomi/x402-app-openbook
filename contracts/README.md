@@ -1,6 +1,6 @@
 # 刻印のコントラクト
 
-日次財務レコードのハッシュを Arc テストネットへ刻印するコントラクトを置く。仕様は [openspec/changes/anchor-daily-hash-on-arc/specs/anchor-registry/spec.md](../openspec/changes/anchor-daily-hash-on-arc/specs/anchor-registry/spec.md) を参照。
+日次財務レコードのハッシュを Arc メインネットへ刻印するコントラクトを置く。仕様は [anchor-registry](../openspec/specs/anchor-registry/spec.md) を参照。
 
 pnpm のワークスペースには含めず、Arc Foundry で扱う。導入手順は [Deploy on Arc](https://docs.arc.io/arc/tutorials/deploy-on-arc) を参照。
 
@@ -22,8 +22,10 @@ arc-forge test
 
 ## ABI の同期
 
-共有パッケージの `packages/shared/src/abi.ts` がコントラクトと一致することを、リポジトリのルートで確認する。
+コントラクトを変更したときは、次の出力を共有パッケージの `packages/shared/src/abi.ts` と照合し、同時に更新する。
 
 ```bash
-pnpm check:abi
+arc-forge inspect src/AnchorRegistry.sol:AnchorRegistry abi --json
 ```
+
+生成物との照合は手動で行い、ワークスペースのテストは生成物に依存しない。

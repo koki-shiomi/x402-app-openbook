@@ -54,10 +54,10 @@ interface __BaseEnv_Env {
    * 刻印専用の EOA の秘密鍵（`0x` で始まる 32 バイト）。
    *
    * このアドレスだけが刻印のコントラクトへ書き込める。漏洩した場合に失うのは
-   * 刻印の書き込み権限とテストネットの USDC に限られるよう、他の用途に使わない。
+   * メインネットの USDC を扱うため秘密値を記録せず、運営者の指定した用途に限る。
    */
   ARC_SIGNER_PRIVATE_KEY?: string;
-  /** Arc テストネットの RPC の URL。公式の URL と viem の既定値が異なるため設定値で渡す。 */
+  /** Arc メインネットの RPC の URL。公式の URL と viem の既定値が異なるため設定値で渡す。 */
   ARC_RPC_URL?: string;
   /** 刻印のコントラクトのアドレス。 */
   ARC_ANCHOR_CONTRACT?: string;
@@ -65,8 +65,8 @@ interface __BaseEnv_Env {
   /**
    * x402 の facilitator の所在。
    *
-   * Circle の hosted facilitator（`https://gateway-api-testnet.circle.com/v1/x402`）は
-   * API キーを要求せず、Arc Testnet（`eip155:5042002`）に対応する。別の facilitator や
+   * Circle の hosted facilitator（`https://gateway-api.circle.com/v1/x402`）は
+   * API キーを要求せず、Arc Mainnet（`eip155:5042`）に対応する。別の facilitator や
    * 自前の実装へ切り替えられるよう設定値にする。
    */
   X402_FACILITATOR_URL?: string;

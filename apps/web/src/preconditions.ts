@@ -75,7 +75,7 @@ export async function checkPreconditions(
     return {
       ok: false,
       reason: 'wrong-chain',
-      message: `接続先を Arc Testnet へ切り替えてください。`,
+      message: `接続先を Arc Mainnet へ切り替えてください。`,
       // ウォレットが当該チェーンを知らない場合に、手動で追加できるようにする。
       details: {
         chainId: expectedChainId,
@@ -116,7 +116,7 @@ export async function checkPreconditions(
 /**
  * CAIP-2 のネットワーク表記からチェーン ID を取り出す。
  *
- * @param network `eip155:5042002` の形の表記
+ * @param network `eip155:5042` の形の表記
  * @returns チェーン ID
  */
 function chainIdOf(network: string): number {

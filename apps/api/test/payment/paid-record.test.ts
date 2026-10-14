@@ -23,11 +23,11 @@ const SUPPORTED = {
     {
       x402Version: 2,
       scheme: 'exact',
-      network: 'eip155:5042002',
+      network: 'eip155:5042',
       extra: {
         name: 'GatewayWalletBatched',
         version: '1',
-        verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+        verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
         assets: [{ symbol: 'USDC', address: USDC, decimals: 6 }],
       },
     },
@@ -47,7 +47,7 @@ async function seedAnchoredRecord(date: string, revision = 1): Promise<Uint8Arra
     date,
     revision,
     hash: await sha256Hex(bytes),
-    chainId: 5042002,
+    chainId: 5042,
     contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
     transactionHash: '0xabc',
     blockNumber: 100,
@@ -75,7 +75,7 @@ function fakeFacilitator(behavior: 'valid' | 'invalid' | 'unreachable'): Facilit
     async settle() {
       if (behavior === 'unreachable') unreachable();
       return (behavior === 'valid'
-        ? { success: true, transaction: '0xsettled', network: 'eip155:5042002', payer: '0xPayer' }
+        ? { success: true, transaction: '0xsettled', network: 'eip155:5042', payer: '0xPayer' }
         : { success: false, errorReason: 'settlement_failed' }) as never;
     },
   };
@@ -222,7 +222,7 @@ describe('支払いの明細', () => {
       date: '2026-09-15',
       amount: '100000',
       asset: USDC,
-      network: 'eip155:5042002',
+      network: 'eip155:5042',
       transactionHash: '0xsettled',
     });
     expect(receipts[0]?.settledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);

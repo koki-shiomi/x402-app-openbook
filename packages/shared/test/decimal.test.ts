@@ -8,7 +8,7 @@ import {
   multiplyDecimals,
   roundHalfUp,
   subtractDecimals,
-} from './decimal.js';
+} from '../src/decimal.js';
 
 describe('isDecimalString', () => {
   it.each(['0', '-1', '1.0071', '0.000001', '-0.5'])('%s を妥当と判定する', (value) => {

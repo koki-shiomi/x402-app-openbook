@@ -1,4 +1,4 @@
-import { roundHalfUp, multiplyDecimals } from '@openbook/shared';
+import { ARC_NETWORK, roundHalfUp, multiplyDecimals } from '@openbook/shared';
 import { ExactEvmScheme } from '@x402/evm/exact/server';
 import { paymentMiddlewareFromConfig } from '@x402/hono';
 import { HTTPFacilitatorClient, type FacilitatorClient } from '@x402/core/server';
@@ -19,10 +19,10 @@ import type { PaymentConfig } from './config.js';
  */
 
 /** 決済を行うチェーン。刻印と同じチェーンに揃える。 */
-export const PAYMENT_NETWORK = 'eip155:5042002';
+export const PAYMENT_NETWORK = ARC_NETWORK.paymentNetwork;
 
-/** 決済に用いる資産（Arc Testnet の USDC の ERC-20 インタフェース）。 */
-export const PAYMENT_ASSET = '0x3600000000000000000000000000000000000000';
+/** 決済に用いる資産（Arc Mainnet の USDC の ERC-20 インタフェース）。 */
+export const PAYMENT_ASSET = ARC_NETWORK.paymentAsset;
 
 /** 資産の小数桁数。ERC-20 としての USDC は 6 桁である（ネイティブの 18 桁とは異なる）。 */
 const ASSET_DECIMALS = 6;
@@ -75,6 +75,10 @@ async function resolveFacilitatorTerms(client: FacilitatorClient): Promise<Facil
   }
 
   const extra = kind.extra ?? {};
+  if (typeof extra['verifyingContract'] !== 'string' ||
+      extra['verifyingContract'].toLowerCase() !== ARC_NETWORK.gatewayWallet.toLowerCase()) {
+    throw new Error('facilitator の Gateway Wallet が公開設定と一致しません');
+  }
   const minValidity = extra['minValiditySeconds'];
 
   return {

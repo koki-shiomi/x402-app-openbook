@@ -16,7 +16,7 @@ import { createWalletStub, TEST_PRIVATE_KEY } from './support/wallet-stub.js';
 const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 
 const TERMS: PaymentTerms = {
-  network: 'eip155:5042002',
+  network: 'eip155:5042',
   amount: '100000',
   asset: '0x3600000000000000000000000000000000000000',
   payTo: '0xd77dd307A9E395fB2680011deeD994A27cf70d4b',
@@ -24,7 +24,7 @@ const TERMS: PaymentTerms = {
   extra: {
     name: 'GatewayWalletBatched',
     version: '1',
-    verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+    verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
   },
 };
 
@@ -36,7 +36,7 @@ function depositOf(balance: bigint): PreconditionDeps['readDeposit'] {
 /** 既定の依存を組み立てる。 */
 function depsWith(overrides: Partial<PreconditionDeps> = {}): PreconditionDeps {
   return {
-    ethereum: createWalletStub({ chainId: 5042002 }),
+    ethereum: createWalletStub({ chainId: 5042 }),
     readDeposit: depositOf(500000n),
     ...overrides,
   };
@@ -52,7 +52,7 @@ describe('支払いの事前条件', () => {
   it('未接続なら接続が必要である旨を示す', async () => {
     const result = await checkPreconditions(
       TERMS,
-      depsWith({ ethereum: createWalletStub({ chainId: 5042002, connected: false }) }),
+      depsWith({ ethereum: createWalletStub({ chainId: 5042, connected: false }) }),
     );
 
     expect(result.ok).toBe(false);
@@ -78,7 +78,7 @@ describe('支払いの事前条件', () => {
     );
 
     expect(result.ok === false && result.details).toEqual(
-      expect.objectContaining({ chainId: 5042002 }),
+      expect.objectContaining({ chainId: 5042 }),
     );
   });
 
@@ -100,7 +100,7 @@ describe('支払いの事前条件', () => {
     expect(result.ok === false && result.reason).toBe('insufficient-deposit');
     expect(result.ok === false && result.message).toContain('預け入れ');
     expect(result.ok === false && result.details).toEqual(
-      expect.objectContaining({ gatewayWallet: '0x0077777d7eba4688bdef3e311b846f25870a19b9' }),
+      expect.objectContaining({ gatewayWallet: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE' }),
     );
   });
 
@@ -112,7 +112,7 @@ describe('支払いの事前条件', () => {
 
   it('判定は署名を求めない', async () => {
     let signed = false;
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const watching = {
       ...wallet,
       async request(request: { method: string; params?: unknown[] }) {

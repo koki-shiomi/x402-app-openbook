@@ -23,11 +23,11 @@ function fakeFacilitator(): FacilitatorClient {
           {
             x402Version: 2,
             scheme: 'exact',
-            network: 'eip155:5042002',
+            network: 'eip155:5042',
             extra: {
               name: 'GatewayWalletBatched',
               version: '1',
-              verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+              verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
               minValiditySeconds: 604800,
               assets: [{ symbol: 'USDC', address: USDC, decimals: 6 }],
             },
@@ -64,6 +64,17 @@ async function paymentRequirements(response: Response) {
 }
 
 describe('x402 のミドルウェア', () => {
+  it('広告の Gateway Wallet が公開設定と異なれば決済を開始しない', async () => {
+    const facilitator = fakeFacilitator();
+    const getSupported = facilitator.getSupported.bind(facilitator);
+    facilitator.getSupported = async () => {
+      const supported = await getSupported();
+      supported.kinds[0]!.extra = { ...supported.kinds[0]!.extra, verifyingContract: '0x0000000000000000000000000000000000000001' };
+      return supported;
+    };
+    await expect(createPaymentMiddleware(CONFIG, facilitator)).rejects.toThrow(/Gateway Wallet/);
+  });
+
   it('支払いのない要求に 402 と支払いの条件が返る', async () => {
     const response = await (await appWithPayment()).request('/v1/records/2026-09-15');
 
@@ -79,7 +90,7 @@ describe('x402 のミドルウェア', () => {
 
     expect(accepted).toMatchObject({
       scheme: 'exact',
-      network: 'eip155:5042002',
+      network: 'eip155:5042',
       asset: USDC,
       amount: '100000',
       payTo: CONFIG.payTo,
@@ -95,7 +106,7 @@ describe('x402 のミドルウェア', () => {
     expect(accepted?.extra).toEqual({
       name: 'GatewayWalletBatched',
       version: '1',
-      verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+      verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
       minValiditySeconds: 604800,
       assets: [{ symbol: 'USDC', address: USDC, decimals: 6 }],
     });

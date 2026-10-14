@@ -1,8 +1,8 @@
 import { decodeFunctionData, custom, pad, toHex } from 'viem';
 import { describe, expect, it } from 'vitest';
 
-import { ANCHOR_REGISTRY_ABI } from './abi.js';
-import { createRegistryReader } from './reader.js';
+import { ANCHOR_REGISTRY_ABI } from '../src/abi.js';
+import { createRegistryReader } from '../src/reader.js';
 
 const CONTRACT = '0xC039722204Dde6DF3dFb48a9a3068163d30b997a';
 const HASH = '0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
@@ -13,7 +13,7 @@ function stubTransport(result: `0x${string}`) {
   const transport = custom({
     async request({ method, params }: { method: string; params: unknown[] }) {
       if (method === 'eth_chainId') {
-        return toHex(5042002);
+        return toHex(5042);
       }
       if (method === 'eth_call') {
         const [call] = params as [{ to: string; data: `0x${string}` }];
@@ -28,11 +28,23 @@ function stubTransport(result: `0x${string}`) {
 }
 
 describe('viem を用いた刻印の照会', () => {
+  it('同じアドレスでも旧ネットワークを照会先として受け入れない', async () => {
+    let calls = 0;
+    const transport = custom({ async request({ method }) {
+      if (method === 'eth_chainId') return toHex(5042002);
+      calls++;
+      return HASH;
+    } });
+    const reader = createRegistryReader({ contractAddress: CONTRACT, transport });
+    await expect(reader.hashOf(20261003, 1)).rejects.toThrow('Arc Mainnet');
+    await expect(reader.latestRevisionOf(20261003)).rejects.toThrow('Arc Mainnet');
+    expect(calls).toBe(0);
+  });
   it('チェーン ID とコントラクトのアドレスを公開する', () => {
     const { transport } = stubTransport(HASH);
     const reader = createRegistryReader({ contractAddress: CONTRACT, transport });
 
-    expect(reader.chainId).toBe(5042002);
+    expect(reader.chainId).toBe(5042);
     expect(reader.contractAddress).toBe(CONTRACT);
   });
 

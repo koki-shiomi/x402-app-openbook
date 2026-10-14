@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeTotals, recordIncomplete } from './totals.js';
-import { validateRecord } from './validate.js';
+import { computeTotals, recordIncomplete } from '../src/totals.js';
+import { validateRecord } from '../src/validate.js';
 import { buildRecord } from './test-fixtures.js';
-import type { Entry, IncompleteItem } from './record.js';
+import type { Entry, IncompleteItem } from '../src/record.js';
 
 describe('recordIncomplete', () => {
   it('取得失敗した対象を理由とともに記録し、0 円のエントリを追加しない', () => {

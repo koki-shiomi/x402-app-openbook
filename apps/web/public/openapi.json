@@ -4,7 +4,7 @@
     "title": "Sizet OpenBook API",
     "version": "1.0.0",
     "summary": "個人開発アプリ Sizet の日次の収益と費用を公開する API",
-    "description": "日次財務レコードを x402 による USDC 決済つきで公開する。返すバイト列は保存されているものそのもので、Arc テストネット上に刻印されたハッシュと照合して検証できる。\n\n決済の手順（署名の組み立て方、EIP-712 のドメインの決定、事前に必要な預け入れ）は本書では扱わない。docs/paid-api.md を参照。"
+    "description": "日次財務レコードを x402 による USDC 決済つきで公開する。返すバイト列は保存されているものそのもので、Arc メインネット上に刻印されたハッシュと照合して検証できる。\n\n決済の手順（署名の組み立て方、EIP-712 のドメインの決定、事前に必要な預け入れ）は本書では扱わない。リポジトリの README.md「APIの使い方」 を参照。"
   },
   "servers": [
     {
@@ -63,7 +63,7 @@
             "name": "PAYMENT-SIGNATURE",
             "in": "header",
             "required": false,
-            "description": "署名した支払い（Base64 の JSON）。402 で受け取った条件に沿って組み立てる。組み立て方は docs/paid-api.md を参照。",
+            "description": "署名した支払い（Base64 の JSON）。402 で受け取った条件に沿って組み立てる。組み立て方は リポジトリの README.md「APIの使い方」 を参照。",
             "schema": { "type": "string" }
           }
         ],
@@ -81,7 +81,7 @@
               },
               "X-Anchor-Chain-Id": {
                 "description": "チェーン ID",
-                "schema": { "type": "integer", "examples": [5042002] }
+                "schema": { "type": "integer", "examples": [5042] }
               },
               "X-Anchor-Contract": {
                 "description": "刻印のコントラクトのアドレス",
@@ -324,7 +324,7 @@
           "network": {
             "type": "string",
             "description": "決済のネットワーク（CAIP-2）",
-            "examples": ["eip155:5042002"]
+            "examples": ["eip155:5042"]
           },
           "amount": {
             "type": "string",
@@ -339,7 +339,7 @@
           },
           "extra": {
             "type": "object",
-            "description": "署名に用いる EIP-712 のドメインなど。決済の取次が広告した値をそのまま引き写したものであり、署名にはこの値を用いる。詳細は docs/paid-api.md を参照。",
+            "description": "署名に用いる EIP-712 のドメインなど。決済の取次が広告した値をそのまま引き写したものであり、署名にはこの値を用いる。詳細は リポジトリの README.md「APIの使い方」 を参照。",
             "additionalProperties": true
           }
         }

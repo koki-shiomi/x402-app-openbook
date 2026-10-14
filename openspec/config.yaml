@@ -7,7 +7,7 @@ context: |
   Sizet OpenBook は、個人開発アプリ「Sizet」（服のサイズを管理する iOS アプリ）の
   収益と費用を、個人開発者向けに公開するシステムである。
   日次の財務データを x402 による USDC 決済つきの有料 API として提供し、
-  データが改ざんされていないことを Arc テストネット上のコントラクトに
+  データが改ざんされていないことを Arc メインネット上のコントラクトに
   刻んだハッシュで第三者が検証できるようにする。
 
   Sizet 本体は別リポジトリ（`sizet`）であり、このプロジェクトから変更しない。
@@ -26,7 +26,7 @@ context: |
   2. collect-daily-cost: 4 プロバイダの費用を日次収集（1 に依存）
   3. collect-daily-revenue: AdMob の収益を日次収集（1 に依存、2 と並行可）
   4. anchor-daily-hash-on-arc: 日次レコードの最新リビジョンのハッシュを日次で
-     Arc テストネットへ刻印・検証（2,3 に依存）
+     Arc へ刻印・検証（当初は開発用Testnet、2026-10-04にMainnetへ切替え。2,3 に依存）
   5. serve-x402-paid-api: x402 による USDC 決済つき有料 API（2,3,4 に依存）
   6. build-public-dashboard: 支払いから可視化までのフロントエンド（5 に依存）
 
@@ -66,7 +66,28 @@ context: |
     刻印が失敗した場合の次の実行までは、その日を取得できない状態が続く。これを許容して
     「公開された値は必ずチェーン上のハッシュと照合できる」状態を保つ
 
-  ## 外部依存について確認済みの事実
+  ## 現在の本番ネットワーク（2026-10-04）
+
+  - 本番WorkerとWebはArc Mainnet（chain ID 5042）へ切替え済み。
+    共有定義は `packages/shared/src/network.ts`。RPCは `https://rpc.mainnet.arc.io`、
+    explorerは `https://explorer.arc.io`。AnchorRegistryは
+    `0xC039722204Dde6DF3dFb48a9a3068163d30b997a`（2026-10-02配備、
+    TX `0x2982397df928bedb03442950ae61995e7921da75c992900b5cb933d279b1f8d9`）。
+    Mainnetのコード・所有者・chain IDは確認済みだが、ソース公開検証は未完了で後続作業。
+  - 決済は `eip155:5042`、本番facilitatorは `https://gateway-api.circle.com/v1/x402`。
+    Gateway Walletは `0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE`。
+    `/supported` のネットワーク・資産・EIP-712ドメインとの一致を確認済み。
+    刻印EOAと受取先は運営者指定の `0xd77dd307A9E395fB2680011deeD994A27cf70d4b` を共用する。
+    実購入の買い手は別アドレスが必要。価格は実際の0.10 USDC。
+  - 移行前のR2開発データ288件は削除済み。保存・復元はせず、バケットは再利用する。
+    2026-10-04 09:28 JSTにメインネット版を公開してCronを再開した。
+    `/health` 正常、一覧が空、旧期間の取得が課金なし404、Web表示正常を確認済み。
+    初回の前日収集は2026-10-04 15:00 JST、刻印は16:00 JSTの予定。
+    再開後の実データ刻印・翌日の収集・実決済はまだ観測していない。
+    切替えと旧データ削除の観測記録は
+    `openspec/changes/migrate-to-arc-mainnet/design.md` の「実施記録」に保存する。
+
+  ## 外部依存について確認済みの事実（開発時の過去の観測）
 
   以下は 2026-09 に実際の API を呼び出して確認した結果である。
 

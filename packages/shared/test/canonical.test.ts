@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalize } from './canonical.js';
+import { canonicalize } from '../src/canonical.js';
 import { buildRecord } from './test-fixtures.js';
 
 const decoder = new TextDecoder();

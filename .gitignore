@@ -33,6 +33,7 @@ yarn-debug.*
 yarn-error.*
 
 # Claude Code (personal overrides)
+.claude/settings.json
 .claude/settings.local.json
 .claude/worktrees/
 

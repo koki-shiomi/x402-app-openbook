@@ -31,11 +31,11 @@ const facilitator: FacilitatorClient = {
         {
           x402Version: 2,
           scheme: 'exact',
-          network: 'eip155:5042002',
+          network: 'eip155:5042',
           extra: {
             name: 'GatewayWalletBatched',
             version: '1',
-            verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+            verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
             assets: [{ symbol: 'USDC', address: USDC, decimals: 6 }],
           },
         },
@@ -49,7 +49,7 @@ const facilitator: FacilitatorClient = {
     return {
       success: true,
       transaction: '0xsettled',
-      network: 'eip155:5042002',
+      network: 'eip155:5042',
       payer: '0xPayer',
     } as never;
   },
@@ -66,7 +66,7 @@ describe('API で取得したバイト列の検証', () => {
       date,
       revision: 2,
       hash,
-      chainId: 5042002,
+      chainId: 5042,
       contractAddress: CONTRACT,
       transactionHash: '0xanchored',
       blockNumber: 100,

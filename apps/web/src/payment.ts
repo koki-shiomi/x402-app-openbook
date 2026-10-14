@@ -159,7 +159,7 @@ function randomNonce(): string {
 /**
  * CAIP-2 のネットワーク表記からチェーン ID を取り出す。
  *
- * @param network `eip155:5042002` の形の表記
+ * @param network `eip155:5042` の形の表記
  * @returns チェーン ID
  */
 function chainIdOf(network: string): number {

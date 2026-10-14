@@ -15,7 +15,7 @@ const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 
 describe('ウォレットの接続', () => {
   it('接続するとアドレスが得られる', async () => {
-    const wallet = createWalletStub({ chainId: 5042002, connected: false });
+    const wallet = createWalletStub({ chainId: 5042, connected: false });
 
     expect(await connect(wallet)).toBe(account.address);
   });
@@ -25,7 +25,7 @@ describe('ウォレットの接続', () => {
   });
 
   it('ウォレットがあれば取り出せる', () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
 
     expect(findProvider({ ethereum: wallet })).toBe(wallet);
   });
@@ -35,13 +35,13 @@ describe('チェーンの切り替え', () => {
   it('切り替えを要求すると接続先が変わる', async () => {
     const wallet = createWalletStub({ chainId: 1 });
 
-    await ensureChain(wallet, 5042002);
+    await ensureChain(wallet, 5042);
 
-    expect(wallet.chainId).toBe(5042002);
+    expect(wallet.chainId).toBe(5042);
   });
 
   it('既に一致していれば要求しない', async () => {
-    const wallet = createWalletStub({ chainId: 5042002 });
+    const wallet = createWalletStub({ chainId: 5042 });
     const seen: string[] = [];
     const watching = {
       ...wallet,
@@ -51,7 +51,7 @@ describe('チェーンの切り替え', () => {
       },
     };
 
-    await ensureChain(watching, 5042002);
+    await ensureChain(watching, 5042);
 
     expect(seen).not.toContain('wallet_switchEthereumChain');
   });
@@ -71,7 +71,7 @@ describe('チェーンの切り替え', () => {
       },
     };
 
-    await ensureChain(unknownChain, 5042002);
+    await ensureChain(unknownChain, 5042);
 
     expect(seen).toContain('wallet_addEthereumChain');
   });
@@ -88,6 +88,6 @@ describe('チェーンの切り替え', () => {
       },
     };
 
-    await expect(ensureChain(unknownChain, 5042002)).rejects.toThrow();
+    await expect(ensureChain(unknownChain, 5042)).rejects.toThrow();
   });
 });

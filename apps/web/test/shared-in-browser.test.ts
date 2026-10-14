@@ -26,7 +26,7 @@ describe('共有パッケージのブラウザでの動作', () => {
     const hash = await sha256Hex(bytes);
 
     const result = await verifyAnchoredRecord(bytes, {
-      chainId: 5042002,
+      chainId: 5042,
       contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
       async hashOf() {
         return hash;
@@ -44,10 +44,10 @@ describe('共有パッケージのブラウザでの動作', () => {
   it('刻印の照会を組み立てられる', () => {
     const reader = createRegistryReader({
       contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
-      rpcUrl: 'https://rpc.testnet.arc.io',
+      rpcUrl: 'https://rpc.mainnet.arc.io',
     });
 
-    expect(reader.chainId).toBe(5042002);
+    expect(reader.chainId).toBe(5042);
     expect(reader.contractAddress).toBe('0xC039722204Dde6DF3dFb48a9a3068163d30b997a');
   });
 });

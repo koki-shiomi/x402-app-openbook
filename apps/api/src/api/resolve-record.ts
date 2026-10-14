@@ -1,4 +1,4 @@
-import { isCalendarDate, type DailyRecord } from '@openbook/shared';
+import { ARC_CHAIN, ARC_NETWORK, isCalendarDate, type DailyRecord } from '@openbook/shared';
 
 import { readAnchorRecord } from '../anchor/store.js';
 import { getRecord } from '../storage.js';
@@ -42,7 +42,8 @@ export async function resolveRecordAccess(bucket: R2Bucket, date: string): Promi
   const revision = (JSON.parse(new TextDecoder().decode(bytes)) as DailyRecord).revision;
   const anchored = await readAnchorRecord(bucket, date, revision);
 
-  return anchored === null
+  return anchored === null || anchored.chainId !== ARC_CHAIN.id ||
+    anchored.contractAddress.toLowerCase() !== ARC_NETWORK.anchorContract.toLowerCase()
     ? { kind: 'unanchored', date }
     : { kind: 'ready', date, revision };
 }

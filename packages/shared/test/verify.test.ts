@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { sha256Hex, type HexHash } from './hash.js';
-import { verifyAnchoredRecord, ZERO_HASH, type AnchorReader } from './verify.js';
+import { sha256Hex, type HexHash } from '../src/hash.js';
+import { verifyAnchoredRecord, ZERO_HASH, type AnchorReader } from '../src/verify.js';
 
 const encoder = new TextEncoder();
 
 const CONTRACT = '0xC039722204Dde6DF3dFb48a9a3068163d30b997a';
-const CHAIN_ID = 5042002;
+const CHAIN_ID = 5042;
 
 /** 対象日とリビジョンを与えてレコードのバイト列を作る。 */
 function recordBytes(date = '2026-09-13', revision = 2, amount = '12.00'): Uint8Array {

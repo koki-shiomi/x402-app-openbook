@@ -1,5 +1,5 @@
 import { createPublicClient, encodeFunctionData, http, parseSignature, type Address } from 'viem';
-import { arcTestnet } from 'viem/chains';
+import { ARC_CHAIN } from '@openbook/shared';
 
 import { GATEWAY_WALLET_ABI } from '@openbook/shared';
 
@@ -42,7 +42,7 @@ const RECEIVE_TYPES = {
  * @returns 資産の最小単位での残高
  */
 export async function readDeposit(asset: string, account: string): Promise<bigint> {
-  const client = createPublicClient({ chain: arcTestnet, transport: http(ARC_RPC_URL) });
+  const client = createPublicClient({ chain: ARC_CHAIN, transport: http(ARC_RPC_URL) });
 
   return await client.readContract({
     address: GATEWAY_WALLET as Address,
@@ -95,7 +95,7 @@ export function buildDepositAuthorization(
   return {
     domain: {
       ...ASSET_DOMAIN,
-      chainId: arcTestnet.id,
+      chainId: ARC_CHAIN.id,
       verifyingContract: PAYMENT_ASSET as `0x${string}`,
     },
     types: RECEIVE_TYPES,

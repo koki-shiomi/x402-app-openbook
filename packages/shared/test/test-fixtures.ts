@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION, type DailyRecord } from './record.js';
+import { SCHEMA_VERSION, type DailyRecord } from '../src/record.js';
 
 /**
  * テスト用の妥当な日次財務レコードを組み立てる。

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import { validateRecord } from './validate.js';
-import { SCHEMA_VERSION, type DailyRecord, type Entry } from './record.js';
+import { validateRecord } from '../src/validate.js';
+import { SCHEMA_VERSION, type DailyRecord, type Entry } from '../src/record.js';
 import { buildRecord } from './test-fixtures.js';
 
 describe('レコードの型', () => {

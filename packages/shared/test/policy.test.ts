@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isWithinRevisionThreshold } from './policy.js';
+import { isWithinRevisionThreshold } from '../src/policy.js';
 
 describe('訂正リビジョンを見送る閾値', () => {
   it('差が 1 円以下かつ比率が 1% 以下なら見送る', () => {

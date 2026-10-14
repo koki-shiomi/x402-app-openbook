@@ -6,7 +6,7 @@ import { ANCHOR_TRIGGER } from '../../src/triggers.js';
 import { readAnchorRuns } from '../../src/anchor/store.js';
 import { recordKey } from '../../src/storage.js';
 
-/** wrangler.jsonc の vars で与えたテスト用トークン。 */
+/** test/support/runtime.ts で与えたテスト用トークン。 */
 const TOKEN = 'test-token';
 
 beforeEach(async () => {

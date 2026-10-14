@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateRecord } from './validate.js';
+import { validateRecord } from '../src/validate.js';
 import { buildRecord } from './test-fixtures.js';
-import type { DailyRecord, Entry } from './record.js';
+import type { DailyRecord, Entry } from '../src/record.js';
 
 /** 違反メッセージの中に指定の語を含むものがあるか。 */
 function hasError(record: DailyRecord, fragment: string): boolean {

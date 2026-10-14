@@ -1,8 +1,8 @@
 # Sizet OpenBook
 
-個人開発アプリ「Sizet」の収益と費用を日次で公開するシステム。日次財務レコードのハッシュを Arc テストネットへ刻印し、第三者が改ざんの有無を検証できるようにする。
+個人開発アプリ「Sizet」の収益と費用を日次で公開するシステム。日次財務レコードのハッシュを Arc メインネットへ刻印し、第三者が改ざんの有無を検証できるようにする。
 
-プロジェクトの目的・ロードマップ・チェンジ横断の確定方針・外部 API について確認済みの事実は [openspec/config.yaml](openspec/config.yaml) に集約している。本書はリポジトリの構成のみを扱う。
+プロジェクトの目的・ロードマップ・チェンジ横断の確定方針・外部 API について確認済みの事実は [openspec/config.yaml](openspec/config.yaml) に集約している。仕様は `openspec/specs/` と進行中の変更に集約し、本書はリポジトリの構成・使い方・開発手順を扱う。
 
 ## ディレクトリ構成
 
@@ -14,8 +14,6 @@ apps/api/            Cloudflare Workers の API 本体と日次バッチ
   test/              テスト
 packages/shared/     フロントエンドと共有するロジック
 contracts/           刻印のコントラクト（Solidity）
-docs/                第三者向けの手順書
-scripts/             補助スクリプト
 openspec/            仕様（現行・進行中・完了）
 ```
 
@@ -52,7 +50,7 @@ Cloudflare Workers 上で動く API と日次バッチ。
 
 ### src/anchor/
 
-日次レコードの最新リビジョンのハッシュを Arc テストネットへ刻印する。収集を行った実行の後に 1 回呼ばれる。刻印の失敗を収集の失敗にしないため、例外を外へ投げず結果を実行記録に残す。
+日次レコードの最新リビジョンのハッシュを Arc メインネットへ刻印する。収集を行った実行の後に 1 回呼ばれる。刻印の失敗を収集の失敗にしないため、例外を外へ投げず結果を実行記録に残す。
 
 | ファイル | 役割 |
 | --- | --- |
@@ -69,7 +67,7 @@ Cloudflare Workers 上で動く API と日次バッチ。
 
 ## packages/shared
 
-Workers・ブラウザ・Node で同じ実装が動くロジック。Node 固有の API は用いない。公開する要素は [index.ts](packages/shared/src/index.ts) からまとめてエクスポートする。テストは対象ファイルと同じ階層に `*.test.ts` として置く。
+Workers・ブラウザ・Node で同じ実装が動くロジック。Node 固有の API は用いない。公開する要素は [index.ts](packages/shared/src/index.ts) からまとめてエクスポートする。テストとフィクスチャは `test/` に置き、`src/` の実装を検証する。文書・運用記録・ビルド生成物はテストの入力にしない。
 
 | ファイル | 役割 |
 | --- | --- |
@@ -85,19 +83,10 @@ Workers・ブラウザ・Node で同じ実装が動くロジック。Node 固有
 | [abi.ts](packages/shared/src/abi.ts) | `AnchorRegistry` の ABI。コントラクトの変更時に同時に更新する |
 | [reader.ts](packages/shared/src/reader.ts) | 刻印のコントラクトへの照会。view 関数のみを用い、イベントの走査を行わない |
 | [verify.ts](packages/shared/src/verify.ts) | 公開されたバイト列とチェーン上の刻印の照合。運営者の記録を判定根拠にしない |
-| [test-fixtures.ts](packages/shared/src/test-fixtures.ts) | テスト用のレコード生成 |
 
 ## contracts
 
 刻印のコントラクト。`src/AnchorRegistry.sol` と `test/AnchorRegistry.t.sol` を置く。依存（`lib/`）はリポジトリに含めない。復元・ビルド・ABI 同期の手順は [contracts/README.md](contracts/README.md) を参照。
-
-## docs
-
-第三者向けの手順書。[verify-anchor.md](docs/verify-anchor.md) は公開データが改ざんされていないことを検証する手順を示す。
-
-## scripts
-
-ワークスペースのテストに収まらない補助スクリプト。[check-abi.mjs](scripts/check-abi.mjs) は共有パッケージの ABI 定数とコントラクトのビルド結果の一致を確かめる。
 
 ## openspec
 
@@ -110,8 +99,147 @@ Workers・ブラウザ・Node で同じ実装が動くロジック。Node 固有
 ```bash
 pnpm typecheck    # 全ワークスペースの型検査
 pnpm test         # 全ワークスペースのテスト
-pnpm check:abi    # ABI 定数とコントラクトの一致確認
-pnpm deploy       # apps/api のデプロイ
+pnpm run deploy   # Web資産のビルドと apps/api のデプロイ
 ```
 
-コントラクトのビルドとテストは `arc-forge` を用いる（[contracts/README.md](contracts/README.md)）。
+テストとフィクスチャは各パッケージの `test/` に置く。APIのテスト環境は `apps/api/test/support/runtime.ts` で定義し、本番のWrangler設定・文書・Webのビルド生成物を読み込まない。
+
+コントラクトのビルドとテストは `arc-forge` を用いる（[contracts/README.md](contracts/README.md)）。ABIはコントラクト変更時にビルド結果と手動で照合する。配備前には `apps/api/wrangler.jsonc` のCronが `apps/api/src/triggers.ts` と一致すること、およびWeb生成物に `v1` で始まる資産がないことを確認する。
+
+
+## APIの使い方
+
+本番の基底URLは `https://sizet-openbook-api.c7uv-tk16-s.workers.dev`。要求・応答の仕様は [paid-record-api](openspec/specs/paid-record-api/spec.md)、決済は [x402-payment](openspec/specs/x402-payment/spec.md) を参照する。機械可読な仕様は `/openapi.json`、閲覧画面は `/docs`、購入画面は `/` にある。
+
+一覧は支払い不要で取得できる。
+
+```bash
+curl -s https://sizet-openbook-api.c7uv-tk16-s.workers.dev/v1/records
+```
+
+日次レコードは `GET /v1/records/{date}` から購入する。日付は UTC の暦日で指定し、価格は1日分0.10 USDC。購入・預入れには実際の USDC を使う。画面からウォレットを接続し、Gateway Walletへの預入れ後に対象日を購入できる。
+
+## 支払いの手順
+
+x402 V2 の標準的な流れに従う。決済の検証と実行は Circle の hosted facilitator が行う。
+
+1. 支払いなしで `GET /v1/records/{date}` を要求する
+2. 402 と `PAYMENT-REQUIRED` ヘッダ（Base64 の支払い条件）が返る
+3. 条件に沿って支払いを署名し、`PAYMENT-SIGNATURE` ヘッダを付けて同じ要求を再送する
+4. 決済が成立すると 200 でレコードが返り、`PAYMENT-RESPONSE` ヘッダに成立の結果が入る
+
+### 事前に必要なこと
+
+支払いに用いる USDC は、Circle の Gateway Wallet（`0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE`）へ預け入れておく必要がある。ウォレットに USDC を持っているだけでは決済が `insufficient_balance` となる。
+
+```
+approve(0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE, 預ける額)  # USDC のコントラクトへ
+deposit(0x3600000000000000000000000000000000000000, 預ける額)  # Gateway Wallet へ
+```
+
+支払い元と受取先が同一のアドレスである支払いは受け付けられない（`self_transfer`）。
+
+### 署名
+
+`TransferWithAuthorization` の EIP-712 署名を作る。**ドメインは資産のものではなく、支払いの条件の `extra` が示すものを用いる。**
+
+| ドメインの項目 | 取得元 |
+| --- | --- |
+| `name` | 支払いの条件の `extra.name`（`GatewayWalletBatched`） |
+| `version` | 支払いの条件の `extra.version` |
+| `chainId` | 支払いの条件の `network` の `eip155:` 以降 |
+| `verifyingContract` | 支払いの条件の `extra.verifyingContract` |
+
+署名の有効期限（`validBefore`）は、条件の `maxTimeoutSeconds` を現在時刻に足した値とする。`extra.minValiditySeconds` を下回ると `authorization_validity_too_short` として拒まれる。
+
+```javascript
+const required = JSON.parse(atob(response.headers.get('PAYMENT-REQUIRED')));
+const accepted = required.accepts[0];
+
+const authorization = {
+  from: account.address,
+  to: accepted.payTo,
+  value: accepted.amount,
+  validAfter: '0',
+  validBefore: String(Math.floor(Date.now() / 1000) + accepted.maxTimeoutSeconds),
+  nonce: ランダムな 32 バイト,
+};
+
+const signature = await account.signTypedData({
+  domain: {
+    name: accepted.extra.name,
+    version: accepted.extra.version,
+    chainId: Number(accepted.network.split(':')[1]),
+    verifyingContract: accepted.extra.verifyingContract,
+  },
+  types: {
+    TransferWithAuthorization: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'validAfter', type: 'uint256' },
+      { name: 'validBefore', type: 'uint256' },
+      { name: 'nonce', type: 'bytes32' },
+    ],
+  },
+  primaryType: 'TransferWithAuthorization',
+  message: { ...authorization を数値へ直したもの },
+});
+
+const header = btoa(JSON.stringify({
+  x402Version: 2,
+  payload: { authorization, signature },
+  resource: required.resource,
+  accepted,
+}));
+```
+
+**既存のクライアント実装について:** `@x402/evm` 2.26.0 の `exact` スキームのクライアントは、署名の `verifyingContract` に資産のアドレスを固定で用いる。条件が示す `extra.verifyingContract` を用いないため、この実装のままでは `invalid_signature` となる。上記のように自前で署名する必要がある。
+
+## 取得したレコードの検証
+
+### 1. レコードのバイト列を入手する
+
+有料 API から取得したレスポンス本文を、そのままファイルへ保存する。整形（インデントの追加、キーの並べ替え、末尾改行の追加）を行うとハッシュが変わるため、受け取ったバイト列を一切変更しない。
+
+```bash
+curl -s <レコードの URL> -o record.json
+```
+
+### 2. ハッシュを算出する
+
+```bash
+sha256sum record.json
+```
+
+出力は `0x` を伴わない 64 桁の 16 進数である。エクスプローラは `0x` つきで表示するため、比較するときは接頭辞の有無を揃える。
+
+### 3. 対象日とリビジョンを読み取る
+
+レコードの `date` と `revision` を見る。対象日は `YYYY-MM-DD` 形式だが、コントラクトは `YYYYMMDD` 形式の整数で保持している。
+
+| レコードの `date` | コントラクトへ入力する値 |
+| --- | --- |
+| `2026-09-13` | `20260913` |
+
+### 4. コントラクトへ照会する
+
+ソース公開検証が完了している場合は、エクスプローラの **Contract → Read Contract** から次の 2 つを呼べる。未完了の場合は下記の RPC コマンドを使う。トランザクションの送信は不要で、ウォレットの接続も要らない。
+
+| 関数 | 入力 | 返る値 |
+| --- | --- | --- |
+| `hashOf` | 対象日（`20260913`）、リビジョン | そのリビジョンに刻印されたハッシュ。未刻印ならすべて 0 |
+| `latestRevisionOf` | 対象日（`20260913`） | その対象日に刻印された最大のリビジョン番号。刻印がなければ 0 |
+
+以下の日付とリビジョンは入力形式の例であり、実際に取得したレコードの値へ置き換える。コマンドで照会する場合は次のとおり。
+
+```bash
+cast call 0xC039722204Dde6DF3dFb48a9a3068163d30b997a \
+  "hashOf(uint32,uint32)(bytes32)" 20260913 2 --rpc-url https://rpc.mainnet.arc.io
+cast call 0xC039722204Dde6DF3dFb48a9a3068163d30b997a \
+  "latestRevisionOf(uint32)(uint32)" 20260913 --rpc-url https://rpc.mainnet.arc.io
+```
+
+### 5. 結果を判定する
+
+手順2のSHA-256と `hashOf` を照合し、レコードのリビジョンと `latestRevisionOf` を比較する。判定分類と注意点は [anchor-verification](openspec/specs/anchor-verification/spec.md) を参照する。

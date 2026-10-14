@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { convertToJpy, fetchUsdJpyRate } from './exchange.js';
-import type { Entry, ExchangeRate } from './record.js';
+import { convertToJpy, fetchUsdJpyRate } from '../src/exchange.js';
+import type { Entry, ExchangeRate } from '../src/record.js';
 
 /** Frankfurter の応答を模したフェッチ関数を作る。 */
 function stubFetch(body: unknown, ok = true): typeof fetch {
@@ -113,7 +113,7 @@ describe('convertToJpy', () => {
 
 describe('レート取得失敗時の扱い', () => {
   it('当該通貨ペアが incomplete へ記録され、換算値を持たない', async () => {
-    const { recordIncomplete } = await import('./totals.js');
+    const { recordIncomplete } = await import('../src/totals.js');
     const { buildRecord } = await import('./test-fixtures.js');
 
     const unconverted = convertToJpy(

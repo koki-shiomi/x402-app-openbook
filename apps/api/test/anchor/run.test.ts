@@ -16,7 +16,7 @@ const NOW = '2026-09-16T06:00:10.000Z';
 const CONFIG = {
   ARC_SIGNER_PRIVATE_KEY:
     '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-  ARC_RPC_URL: 'https://rpc.testnet.arc.io',
+  ARC_RPC_URL: 'https://rpc.mainnet.arc.io',
   ARC_ANCHOR_CONTRACT: CONTRACT,
 };
 
@@ -52,7 +52,7 @@ function fakeChain(
       if (options.failOn === 'chainId') {
         throw options.error ?? new Error('RPC へ接続できません');
       }
-      return options.chainId ?? 5042002;
+      return options.chainId ?? 5042;
     },
     async readStates(targets) {
       if (options.failOn === 'read') {
@@ -77,6 +77,24 @@ function fakeChain(
 }
 
 describe('刻印の実行', () => {
+  it('同じアドレスでも旧テストネットへの送信は拒否する', async () => {
+    await putRecordAt('2026-09-15', 1);
+    const chain = fakeChain({ chainId: 5042002 });
+    const log = await runAnchoring(env.RECORDS, CONFIG, { now: NOW, createChain: () => chain });
+    expect(log).toMatchObject({ ok: false, chainId: 5042002 });
+    expect(chain.sent).toEqual([]);
+    expect(await readAnchorRecord(env.RECORDS, '2026-09-15', 1)).toBeNull();
+  });
+
+  it('メインネットへ送信しチェーン ID 5042 を記録する', async () => {
+    await putRecordAt('2026-09-15', 1);
+    const chain = fakeChain({ chainId: 5042 });
+    const log = await runAnchoring(env.RECORDS, CONFIG, { now: NOW, createChain: () => chain });
+    expect(log).toMatchObject({ ok: true, chainId: 5042 });
+    expect(chain.sent).toHaveLength(1);
+    expect(await readAnchorRecord(env.RECORDS, '2026-09-15', 1)).toMatchObject({ chainId: 5042 });
+  });
+
   it('保存されたバイト列から算出したハッシュを刻印する', async () => {
     const bytes = await putRecordAt('2026-09-15', 1);
     const chain = fakeChain();
@@ -109,7 +127,7 @@ describe('刻印の実行', () => {
       date: '2026-09-15',
       revision: 1,
       hash: await sha256Hex(bytes),
-      chainId: 5042002,
+      chainId: 5042,
       contractAddress: CONTRACT,
       transactionHash: '0xtx',
       blockNumber: 1234,
@@ -159,7 +177,7 @@ describe('刻印の実行', () => {
 
     expect(chain.sent).toEqual([]);
     const stored = await readAnchorRecord(env.RECORDS, '2026-09-15', 1);
-    expect(stored).toMatchObject({ hash, chainId: 5042002 });
+    expect(stored).toMatchObject({ hash, chainId: 5042 });
     expect(stored?.transactionHash).toBeUndefined();
   });
 
@@ -245,7 +263,7 @@ describe('刻印の失敗と実行記録', () => {
       startedAt: NOW,
       finishedAt: NOW,
       ok: true,
-      chainId: 5042002,
+      chainId: 5042,
       contractAddress: CONTRACT,
       transactionHash: '0xtx',
       blockNumber: 1234,

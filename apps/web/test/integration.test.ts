@@ -47,7 +47,7 @@ const TERMS = {
   extra: {
     name: 'GatewayWalletBatched',
     version: '1',
-    verifyingContract: '0x0077777d7eba4688bdef3e311b846f25870a19b9',
+    verifyingContract: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
   },
 };
 

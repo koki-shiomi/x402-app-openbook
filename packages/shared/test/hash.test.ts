@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sha256Hex } from './hash.js';
+import { sha256Hex } from '../src/hash.js';
 
 const encoder = new TextEncoder();
 

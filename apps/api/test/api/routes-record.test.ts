@@ -19,7 +19,7 @@ async function seedAnchoredRecord(date: string, revision: number): Promise<Uint8
     date,
     revision,
     hash: await sha256Hex(bytes),
-    chainId: 5042002,
+    chainId: 5042,
     contractAddress: '0xC039722204Dde6DF3dFb48a9a3068163d30b997a',
     transactionHash: '0xabc',
     blockNumber: 100,
@@ -29,6 +29,16 @@ async function seedAnchoredRecord(date: string, revision: number): Promise<Uint8
 }
 
 describe('GET /v1/records/:date', () => {
+  it('削除後は一覧が空で、旧対象日には課金を要求しない', async () => {
+    await seedAnchoredRecord('2026-09-15', 1);
+    const objects = await env.RECORDS.list();
+    await Promise.all(objects.objects.map(object => env.RECORDS.delete(object.key)));
+    const listing = await SELF.fetch('https://example.com/v1/records');
+    expect(await listing.json()).toEqual({ records: [] });
+    const response = await SELF.fetch('https://example.com/v1/records/2026-09-15');
+    expect(response.status).toBe(404);
+    expect(response.headers.has('PAYMENT-REQUIRED')).toBe(false);
+  });
   it('刻印済みの日は支払いが求められ、本文は返らない', async () => {
     await seedAnchoredRecord('2026-09-15', 1);
 
